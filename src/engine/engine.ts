@@ -10,7 +10,7 @@
 
 import { produce } from 'immer';
 import { Hand } from 'pokersolver';
-import type { GameState, Player, Card, ActionKind, Pot } from './types';
+import type { GameState, Player, Card, ActionKind, Pot, RunItCount, Winner } from './types';
 import { buildDeck, shuffle, cardToStr } from './deck';
 
 // ==================== 创建游戏状态 ====================
@@ -46,6 +46,7 @@ export function startNewHand(state: GameState): GameState {
     s.minRaise = s.config.bigBlind;
     s.street = 'preflop';
     s.winners = undefined;
+    s.runIt = undefined;
     s.waitingToStart = false;
     // 第一手真正发牌时记录倒计时基准；后续手不重置
     if (!s.gameStartedAt) s.gameStartedAt = Date.now();
@@ -58,6 +59,7 @@ export function startNewHand(state: GameState): GameState {
       p.betThisRound = 0;
       p.totalBetThisHand = 0;
       p.lastAction = undefined;
+      p.visualAction = undefined;
       p.revealCards = false;
       // 秀牌是"每手"设置：每手开局默认不秀牌，玩家本手内可切换
       p.showCardsEnabled = false;
@@ -122,7 +124,7 @@ export interface ApplyActionResult {
 }
 
 export function applyAction(state: GameState, seatIdx: number, kind: ActionKind, amount?: number): GameState {
-  if (state.toActSeat !== seatIdx || state.street === 'idle' || state.street === 'showdown' || state.finished) {
+  if (state.toActSeat !== seatIdx || state.street === 'idle' || state.street === 'showdown' || state.street === 'runout-voting' || state.finished) {
     return state;
   }
   return produce(state, (s) => {
@@ -133,11 +135,13 @@ export function applyAction(state: GameState, seatIdx: number, kind: ActionKind,
       case 'fold': {
         p.hasFolded = true;
         p.lastAction = { kind: 'fold', ts: Date.now() };
+        p.visualAction = p.lastAction;
         break;
       }
       case 'check': {
         if (toCall > 0) return; // illegal
         p.lastAction = { kind: 'check', ts: Date.now() };
+        p.visualAction = p.lastAction;
         break;
       }
       case 'call': {
@@ -147,6 +151,7 @@ export function applyAction(state: GameState, seatIdx: number, kind: ActionKind,
         p.totalBetThisHand += pay;
         if (p.stack === 0) p.isAllIn = true;
         p.lastAction = { kind: pay >= p.stack + pay ? 'call' : 'call', amount: pay, ts: Date.now() };
+        p.visualAction = p.lastAction;
         break;
       }
       case 'allin': {
@@ -162,6 +167,7 @@ export function applyAction(state: GameState, seatIdx: number, kind: ActionKind,
           s.currentBet = newBet;
         }
         p.lastAction = { kind: 'allin', amount: pay, ts: Date.now() };
+        p.visualAction = p.lastAction;
         break;
       }
       case 'bet':
@@ -179,6 +185,7 @@ export function applyAction(state: GameState, seatIdx: number, kind: ActionKind,
         if (raiseAmount >= s.minRaise) s.minRaise = raiseAmount;
         s.currentBet = target;
         p.lastAction = { kind: kind === 'bet' ? 'bet' : 'raise', amount: target, ts: Date.now() };
+        p.visualAction = p.lastAction;
         break;
       }
     }
@@ -240,12 +247,9 @@ function advanceStreet(s: GameState) {
   // （p.stack > 0 自然排除了 isAllIn、isSittingOut、空位）
   const stillCanAct = s.players.filter((p) => !p.hasFolded && p.stack > 0);
 
-  // 多人 all-in：直接发完剩余社区牌走摊牌
+  // 多人 all-in / 已无后续下注决策，且公共牌未发完：进入跑马协商
   if (stillCanAct.length <= 1 && s.street !== 'river' && s.street !== 'showdown') {
-    while (s.community.length < 5) dealNextCommunity(s);
-    s.street = 'showdown';
-    s.toActSeat = -1;
-    finalizeHand(s);
+    beginRunItVoting(s);
     return;
   }
 
@@ -265,7 +269,7 @@ function advanceStreet(s: GameState) {
     case 'river':
       s.street = 'showdown';
       s.toActSeat = -1;
-      finalizeHand(s);
+      finalizeHand(s, { skipCollect: true });
       return;
   }
 
@@ -288,13 +292,111 @@ function advanceStreet(s: GameState) {
   s.toActSeat = -1;
   while (s.community.length < 5) dealNextCommunity(s);
   s.street = 'showdown';
-  finalizeHand(s);
+  finalizeHand(s, { skipCollect: true });
 }
 
 function dealNextCommunity(s: GameState, count: number = 1) {
   for (let i = 0; i < count; i++) {
     s.community.push(s.deck.shift()!);
   }
+}
+
+function beginRunItVoting(s: GameState) {
+  // 当前轮下注已经在 advanceStreet 开头收进 pots，这里要清掉桌面下注，避免 UI pot 重复计算。
+  s.players.forEach((p) => { p.betThisRound = 0; p.lastAction = undefined; });
+  const alive = s.players.filter((p) => !p.hasFolded && p.holeCards.length === 2);
+  if (alive.length < 2 || s.community.length >= 5) {
+    while (s.community.length < 5) dealNextCommunity(s);
+    finalizeHand(s, { skipCollect: true });
+    return;
+  }
+
+  const eligibleSeats = alive.filter((p) => !p.isAI && !p.isSittingOut && !p.hasLeft).map((p) => p.seatIdx);
+  s.street = 'runout-voting';
+  s.toActSeat = -1;
+  s.runIt = {
+    status: 'voting',
+    eligibleSeats,
+    votes: {},
+    baseCommunity: [...s.community],
+    runs: [],
+  };
+
+  // 没有真人需要协商时默认只发一次。
+  if (eligibleSeats.length === 0) {
+    completeRunIt(s, 1);
+  }
+}
+
+export function voteRunIt(state: GameState, seatIdx: number, count: RunItCount): GameState {
+  return produce(state, (s) => {
+    if (s.street !== 'runout-voting' || s.runIt?.status !== 'voting') return;
+    if (!s.runIt.eligibleSeats.includes(seatIdx)) return;
+    s.runIt.votes[seatIdx] = count;
+    const allVoted = s.runIt.eligibleSeats.every((seat) => s.runIt?.votes[seat]);
+    if (!allVoted) return;
+    const finalCount = Math.min(...s.runIt.eligibleSeats.map((seat) => s.runIt!.votes[seat] || 1)) as RunItCount;
+    completeRunIt(s, finalCount);
+  });
+}
+
+function completeRunIt(s: GameState, count: RunItCount) {
+  if (!s.runIt) return;
+  const baseCommunity = [...s.runIt.baseCommunity];
+  const pots = s.pots.map((p) => ({ amount: p.amount, eligible: [...p.eligible] }));
+  const alive = s.players.filter((p) => !p.hasFolded && p.holeCards.length === 2);
+  const aggregateWinners: Winner[] = [];
+  const runs: { index: number; community: Card[]; winners: Winner[] }[] = [];
+
+  s.players.forEach((p) => {
+    if (p.accountId && p.holeCards.length === 2) {
+      p.handsPlayed = (p.handsPlayed || 0) + 1;
+    }
+  });
+
+  for (let runIdx = 0; runIdx < count; runIdx++) {
+    const community = [...baseCommunity];
+    while (community.length < 5) community.push(s.deck.shift()!);
+    const runWinners: Winner[] = [];
+
+    for (const pot of pots) {
+      const potShare = Math.floor(pot.amount / count) + (runIdx === 0 ? pot.amount % count : 0);
+      if (potShare <= 0) continue;
+      const contenders = alive.filter((p) => pot.eligible.includes(p.seatIdx));
+      if (contenders.length === 0) continue;
+      const evaluated = contenders.map((p) => {
+        const all = [...p.holeCards, ...community].map(cardToStr);
+        const hand = (Hand as any).solve(all);
+        return { player: p, hand };
+      });
+      const winning = (Hand as any).winners(evaluated.map((e) => e.hand));
+      const winnerPlayers = evaluated.filter((e) => winning.includes(e.hand)).map((e) => e.player);
+      const split = Math.floor(potShare / winnerPlayers.length);
+      const remainder = potShare - split * winnerPlayers.length;
+      winnerPlayers.forEach((wp, i) => {
+        const give = split + (i === 0 ? remainder : 0);
+        wp.stack += give;
+        const desc = (winning[0] as any).descr;
+        const runExisting = runWinners.find((w) => w.seatIdx === wp.seatIdx);
+        if (runExisting) runExisting.amount += give;
+        else runWinners.push({ seatIdx: wp.seatIdx, amount: give, handDescription: desc });
+        const aggExisting = aggregateWinners.find((w) => w.seatIdx === wp.seatIdx);
+        if (aggExisting) aggExisting.amount += give;
+        else aggregateWinners.push({ seatIdx: wp.seatIdx, amount: give, handDescription: desc });
+      });
+    }
+
+    runs.push({ index: runIdx + 1, community, winners: runWinners });
+  }
+
+  s.community = runs[0]?.community || baseCommunity;
+  s.pots = [];
+  s.winners = aggregateWinners;
+  s.street = 'showdown';
+  s.toActSeat = -1;
+  s.runIt = { ...s.runIt, status: 'complete', runCount: count, runs };
+  revealShowdownCards(s, alive.length > 1);
+  markOutOfChips(s);
 }
 
 // ==================== 边池计算 ====================
@@ -352,9 +454,9 @@ function rebuildSidePots(s: GameState) {
 }
 
 // ==================== Showdown / 结算 ====================
-function finalizeHand(s: GameState) {
-  // 把本轮 betThisRound 也并入
-  collectIntoPots(s);
+function finalizeHand(s: GameState, opts: { skipCollect?: boolean } = {}) {
+  // 把本轮 betThisRound 也并入；如果调用方已经在 advanceStreet 收过池，不能重复收
+  if (!opts.skipCollect) collectIntoPots(s);
   s.players.forEach((p) => { p.betThisRound = 0; });
 
   s.street = 'showdown';
@@ -407,12 +509,15 @@ function finalizeHand(s: GameState) {
   s.winners = winners;
   s.toActSeat = -1;
 
-  // ===== 决定哪些牌要 reveal =====
+  revealShowdownCards(s, alive.length > 1);
+  markOutOfChips(s);
+}
+
+function revealShowdownCards(s: GameState, isMultiwayShowdown: boolean) {
   // 规则：
   // 1) showdown（多人 alive 比牌）→ 所有参与摊牌的人都强制 reveal
   // 2) 一人收池（其他人都 fold）→ 收池者只有开了 showCardsEnabled 才 reveal
   // 3) 已 fold 的玩家 → 只有开了 showCardsEnabled 才 reveal
-  const isMultiwayShowdown = alive.length > 1;
   s.players.forEach((p) => {
     if (p.holeCards.length === 0) {
       p.revealCards = false;
@@ -421,15 +526,14 @@ function finalizeHand(s: GameState) {
     if (p.hasFolded) {
       p.revealCards = !!p.showCardsEnabled;
     } else if (isMultiwayShowdown) {
-      // 走到摊牌：强制 reveal
       p.revealCards = true;
     } else {
-      // 一人收池
       p.revealCards = !!p.showCardsEnabled;
     }
   });
+}
 
-  // 标记破产
+function markOutOfChips(s: GameState) {
   s.players.forEach((p) => {
     if (p.stack === 0 && !p.isSittingOut) p.outOfChips = true;
   });

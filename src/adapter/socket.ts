@@ -5,7 +5,7 @@
  * - 服务端给每个玩家发 per-player view（手牌防作弊）
  */
 import PartySocket from 'partysocket';
-import type { GameState, ActionKind, RoomConfig } from '@/engine/types';
+import type { GameState, ActionKind, RoomConfig, RunItCount } from '@/engine/types';
 import type { IAdapter, Listener, ConnectionStatus } from './types';
 
 export interface SocketAdapterParams {
@@ -134,6 +134,10 @@ export class SocketAdapter implements IAdapter {
 
   toggleShowCards() {
     this.socket.send(JSON.stringify({ type: 'toggleShow' }));
+  }
+
+  runItVote(count: RunItCount) {
+    this.socket.send(JSON.stringify({ type: 'runItVote', count }));
   }
 
   rebuy() {

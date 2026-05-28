@@ -8,9 +8,10 @@ export interface Card {
   suit: Suit;
 }
 
-export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'idle' | 'paused';
+export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'idle' | 'paused' | 'runout-voting';
 
 export type ActionKind = 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'allin';
+export type RunItCount = 1 | 2 | 3;
 
 export interface PlayerAction {
   kind: ActionKind;
@@ -33,8 +34,10 @@ export interface Player {
   betThisRound: number;  // 本轮已投入
   totalBetThisHand: number; // 本手累计投入（用于边池）
 
-  // UI 短期标签
+  // 引擎行动状态：用于判断本轮是否行动过
   lastAction?: { kind: ActionKind; amount?: number; ts: number };
+  // UI 短期标签：跨街保留最后一个下注/跟注动作，避免最后一个 call 被立刻清掉看不到筹码动画
+  visualAction?: { kind: ActionKind; amount?: number; ts: number };
 
   // 破产 / 离场
   outOfChips: boolean;   // 真正的"破产，等补码或离场"标记
@@ -56,6 +59,27 @@ export interface Player {
 export interface Pot {
   amount: number;
   eligible: number[]; // 有资格争夺的 player seatIdx
+}
+
+export interface Winner {
+  seatIdx: number;
+  amount: number;
+  handDescription?: string;
+}
+
+export interface RunItRun {
+  index: number;
+  community: Card[];
+  winners: Winner[];
+}
+
+export interface RunItState {
+  status: 'voting' | 'complete';
+  eligibleSeats: number[];
+  votes: Record<number, RunItCount>;
+  runCount?: RunItCount;
+  baseCommunity: Card[];
+  runs: RunItRun[];
 }
 
 export interface RoomConfig {
@@ -89,5 +113,6 @@ export interface GameState {
   // 等待房主开始游戏阶段（仅在线房间）：true 表示还没开第一手
   waitingToStart: boolean;
   hostSeatIdx: number;    // 房主座位（仅在线房间，本地恒为 0）
-  winners?: { seatIdx: number; amount: number; handDescription?: string }[];
+  winners?: Winner[];
+  runIt?: RunItState;
 }

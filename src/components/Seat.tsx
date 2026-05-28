@@ -6,16 +6,19 @@ interface SeatProps {
   active?: boolean;
   showCards?: boolean;          // 显示牌背（对手 alive 状态）
   revealCards?: boolean;        // 翻开真牌（showdown / 主动秀）
-  isWinner?: boolean;           // 是否是本手胜者（贴 WINNER 徽章）
+  isWinner?: boolean;           // 是否是当前结算聚焦赢家（贴 WINNER 徽章）
   handLabel?: string;           // 本手摊牌时的牌型描述（在头像下方大字显示）
   position: { x: number; y: number };
   /** 仅在 hero 自己破产 (stack === 0) 且仍可补码时由父级传入；点击后立即补码 */
   rebuyAmount?: number;         // > 0 时显示补码按钮
   rebuysLeft?: number;          // 剩余补码次数（用于 tooltip / 文案）
   onRebuy?: () => void;
+  /** 当前结算/跑马分条播放时的本次收益 */
+  payoutAmount?: number;
+  payoutActive?: boolean;
 }
 
-export default function Seat({ player, isEmpty, active, showCards, revealCards, isWinner, handLabel, position, rebuyAmount, rebuysLeft, onRebuy }: SeatProps) {
+export default function Seat({ player, isEmpty, active, showCards, revealCards, isWinner, handLabel, position, rebuyAmount, rebuysLeft, onRebuy, payoutAmount, payoutActive }: SeatProps) {
   const style: React.CSSProperties = {
     position: 'absolute',
     left: `${position.x}%`,
@@ -48,6 +51,7 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
 
   const [c1, c2] = player.colorPair;
   const ringClass = active ? 'animate-breathe' : '';
+  const payoutClass = payoutActive ? 'payout-seat-highlight' : '';
   const tagClass = active
     ? 'border-emerald-500 bg-gradient-to-b from-[#0e2820] to-[#051a13] shadow-[0_0_12px_rgba(16,185,129,0.4)]'
     : 'border-white/8 bg-gradient-to-b from-[#1e1e1e] to-[#0a0a0a]';
@@ -99,7 +103,7 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
                     className="relative"
                   >
                     <div
-                      className="w-[44px] h-[60px] rounded-md bg-white border border-black/15 flex flex-col items-center justify-start pt-1 leading-none"
+                      className="opponent-card-reveal w-[44px] h-[60px] rounded-md bg-white border border-black/15 flex flex-col items-center justify-start pt-1 leading-none"
                       style={{
                         boxShadow: '0 6px 14px rgba(0,0,0,0.6), 0 0 12px rgba(212,175,55,0.4)',
                         animation: 'cardFlip 0.5s ease-out',
@@ -117,28 +121,34 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
               }
 
               return (
-                <div
-                  key={i}
-                  style={{ transform: `rotate(${rot}deg) translateX(${tx}px)`, transition: 'transform 0.4s' }}
-                  className="relative"
-                >
-                  <div className="w-6 h-9 rounded bg-gradient-to-br from-[#1e3a5f] to-[#0c1a2e] border border-white/10 shadow-md"></div>
-                </div>
+                  <div
+                    key={i}
+                    style={{
+                      transform: `rotate(${rot}deg) translateX(${tx}px)`,
+                      transition: 'transform 0.4s',
+                      animationDelay: `${i * 120}ms`,
+                    }}
+                    className="opponent-card-back relative"
+                  >
+                    <div className="w-6 h-9 rounded bg-gradient-to-br from-[#1e3a5f] to-[#0c1a2e] border border-white/10 shadow-md"></div>
+                  </div>
               );
             })}
           </div>
         )}
 
         <div
-          className={`seat-avatar relative w-[72px] h-[72px] rounded-full p-[3px] z-10 ${ringClass}`}
+          className={`seat-avatar relative w-[72px] h-[72px] rounded-full p-[3px] z-10 ${ringClass} ${payoutClass}`}
           style={{
             background: 'linear-gradient(180deg, #2a2a2a, #0a0a0a)',
-            boxShadow: isWinner
+            boxShadow: payoutActive
+              ? '0 0 0 3px #f4d97a, 0 0 38px rgba(244,217,122,0.95), 0 8px 18px rgba(0,0,0,0.65)'
+              : isWinner
               ? '0 0 0 2px #d4af37, 0 0 28px rgba(212,175,55,0.85), 0 6px 14px rgba(0,0,0,0.6)'
               : active
               ? '0 0 0 2px #10b981, 0 0 20px rgba(16,185,129,0.7), 0 6px 14px rgba(0,0,0,0.6)'
               : '0 6px 14px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
-            animation: isWinner ? 'winnerHaloPulse 1.4s ease-in-out infinite' : undefined,
+            animation: payoutActive ? 'payoutPulse 1.15s ease-out' : isWinner ? 'winnerHaloPulse 1.4s ease-in-out infinite' : undefined,
           }}
         >
           {active && (
@@ -169,12 +179,12 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
           {/* WINNER 徽章（贴在头像右上） */}
           {isWinner && (
             <div
-              className="absolute -top-1.5 -right-1.5 z-20 px-1.5 py-0.5 rounded text-[8px] font-extrabold tracking-[1.5px]"
+              className="absolute -top-3 -right-4 z-30 px-2.5 py-1 rounded-md text-[10px] font-extrabold tracking-[2px]"
               style={{
-                background: 'linear-gradient(180deg, #f4d97a, #d4af37)',
-                color: '#1a1a1a',
-                border: '1.5px solid #fff',
-                boxShadow: '0 0 10px rgba(212,175,55,0.8), 0 2px 4px rgba(0,0,0,0.5)',
+                background: 'linear-gradient(180deg, #fff4b8, #d4af37)',
+                color: '#16110a',
+                border: '2px solid #fff',
+                boxShadow: '0 0 16px rgba(244,217,122,0.95), 0 3px 7px rgba(0,0,0,0.6)',
                 animation: 'winnerBanner 0.4s ease-out',
               }}
             >
@@ -182,6 +192,11 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
             </div>
           )}
         </div>
+        {payoutActive && payoutAmount && payoutAmount > 0 && (
+          <div className="payout-float pointer-events-none absolute left-1/2 top-[54px] z-40 -translate-x-1/2 rounded-full border border-amber-200/80 bg-black/90 px-3 py-1.5 text-[13px] font-extrabold text-amber-200 shadow-[0_0_18px_rgba(244,217,122,0.75)]">
+            +${payoutAmount.toLocaleString()}
+          </div>
+        )}
         <div className={`seat-tag -mt-2.5 px-2.5 py-1 text-center min-w-[96px] rounded-md border shadow-[0_4px_10px_rgba(0,0,0,0.5)] relative z-10 ${tagClass}`}>
           <div className="text-[11px] font-medium truncate max-w-[92px]">{player.name}</div>
           <div className={`text-[13px] font-semibold leading-none mt-0.5 ${player.stack === 0 ? 'text-gray-500' : 'text-amber-200'}`}>
@@ -214,19 +229,19 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
         {/* 摊牌时的大字牌型标签（头像 + name 标签下方） */}
         {handLabel && (
           <div
-            className="absolute z-20 px-3 py-1 rounded-md whitespace-nowrap pointer-events-none"
+            className="absolute z-20 px-2 py-0.5 rounded whitespace-nowrap pointer-events-none"
             style={{
-              top: 'calc(100% + 4px)',
+              top: 'calc(100% + 3px)',
               left: '50%',
               transform: 'translateX(-50%)',
-              background: 'linear-gradient(180deg, rgba(212,175,55,0.95), rgba(138,111,26,0.95))',
-              border: '1.5px solid #f4d97a',
-              boxShadow: '0 0 14px rgba(212,175,55,0.7), 0 4px 8px rgba(0,0,0,0.6)',
-              animation: 'handLabelPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              background: 'linear-gradient(180deg, rgba(212,175,55,0.9), rgba(138,111,26,0.9))',
+              border: '1px solid #f4d97a',
+              boxShadow: '0 0 8px rgba(212,175,55,0.55), 0 3px 6px rgba(0,0,0,0.55)',
+              animation: 'handLabelPop 0.35s ease-out',
             }}
           >
             <div
-              className="text-[12px] font-extrabold tracking-[1.5px] text-center"
+              className="text-[9px] font-bold tracking-[1.2px] text-center"
               style={{
                 color: '#1a1a1a',
                 textShadow: '0 1px 0 rgba(255,255,255,0.4)',

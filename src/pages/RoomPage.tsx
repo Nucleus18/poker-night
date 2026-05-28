@@ -6,7 +6,7 @@ import { useRoomStore } from '@/room/store';
 import { LocalAdapter, buildPlayers } from '@/adapter/local';
 import { SocketAdapter } from '@/adapter/socket';
 import type { IAdapter, ConnectionStatus } from '@/adapter/types';
-import type { GameState } from '@/engine/types';
+import type { GameState, RunItCount } from '@/engine/types';
 import { getToCall, getMinRaiseTo } from '@/engine/engine';
 import { audioBus } from '@/audio/bus';
 import Seat from '@/components/Seat';
@@ -44,6 +44,10 @@ export default function RoomPage() {
   const [showToast, setShowToast] = useState<string | null>(null);
   const [showStandings, setShowStandings] = useState(false);
   const [showRoomMenu, setShowRoomMenu] = useState(false);
+  const [activeRunIndex, setActiveRunIndex] = useState<number | null>(null);
+  const [activeRunRevealCount, setActiveRunRevealCount] = useState(5);
+  const [activeRunPayoutReady, setActiveRunPayoutReady] = useState(false);
+  const [payoutCycle, setPayoutCycle] = useState(0);
   const [connStatus, setConnStatus] = useState<ConnectionStatus>('open');
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
@@ -136,9 +140,12 @@ export default function RoomPage() {
   useEffect(() => {
     if (!state) return;
     if (state.street === 'showdown' && state.winners) {
-      // 结算展示时间：单赢家 4s / 多赢家(摊牌) 5s
+      // 结算展示时间：单赢家 4s / 多赢家(摊牌) 5s；跑多次时按逐张翻牌节奏额外给结果展示时间
       const isMultiwayShowdown = state.players.filter((p) => !p.hasFolded).length > 1;
-      const showcaseDuration = isMultiwayShowdown ? 5000 : 4000;
+      const runCount = state.runIt?.status === 'complete' ? (state.runIt.runCount || 1) : 1;
+      const remainingRunCards = Math.max(0, 5 - (state.runIt?.baseCommunity.length ?? state.community.length));
+      const runExtra = runCount > 1 ? runCount * (remainingRunCards * 420 + 1100) : 0;
+      const showcaseDuration = (isMultiwayShowdown ? 5000 : 4000) + runExtra;
       const t = setTimeout(() => {
         if (state.endingAfterHand) {
           setShowLeaderboard(true);
@@ -154,6 +161,60 @@ export default function RoomPage() {
       return () => clearTimeout(t);
     }
   }, [state]);
+
+  // 结算收益动画：单次结算直接高亮赢家；跑马多次逐条 RUN、逐张公共牌翻开，再高亮赢家
+  useEffect(() => {
+    if (!state || state.street !== 'showdown' || !state.winners) {
+      setActiveRunIndex(null);
+      setActiveRunRevealCount(5);
+      setActiveRunPayoutReady(false);
+      return;
+    }
+
+    setPayoutCycle((n) => n + 1);
+    const runCount = state.runIt?.status === 'complete' ? (state.runIt.runCount || 1) : 1;
+    if (runCount <= 1) {
+      setActiveRunIndex(null);
+      setActiveRunRevealCount(5);
+      setActiveRunPayoutReady(true);
+      return;
+    }
+
+    const runs = state.runIt?.runs || [];
+    const baseCount = state.runIt?.baseCommunity.length ?? 0;
+    const remaining = Math.max(0, 5 - baseCount);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let cursor = 0;
+
+    runs.forEach((run) => {
+      timers.push(setTimeout(() => {
+        setActiveRunIndex(run.index);
+        setActiveRunRevealCount(baseCount);
+        setActiveRunPayoutReady(false);
+      }, cursor));
+
+      for (let n = 1; n <= remaining; n++) {
+        timers.push(setTimeout(() => {
+          setActiveRunRevealCount(baseCount + n);
+        }, cursor + n * 420));
+      }
+
+      timers.push(setTimeout(() => {
+        setActiveRunPayoutReady(true);
+        setPayoutCycle((n) => n + 1);
+      }, cursor + remaining * 420 + 260));
+
+      cursor += remaining * 420 + 1300;
+    });
+
+    timers.push(setTimeout(() => {
+      setActiveRunIndex(null);
+      setActiveRunRevealCount(5);
+      setActiveRunPayoutReady(false);
+    }, cursor + 500));
+
+    return () => timers.forEach(clearTimeout);
+  }, [state?.handNumber, state?.street, state?.winners, state?.runIt]);
 
   // 静音切换
   useEffect(() => { audioBus.setMuted(muted); }, [muted]);
@@ -200,10 +261,6 @@ export default function RoomPage() {
     return labels;
   }, [state]);
 
-  const winnerSet = useMemo(() => {
-    return new Set((state?.winners || []).map((w) => w.seatIdx));
-  }, [state?.winners]);
-
   if (!room) return <div className="h-full w-full flex items-center justify-center text-emerald-100/50">加载中...</div>;
   if (!state) {
     const isOnline = room.mode === 'online';
@@ -240,16 +297,25 @@ export default function RoomPage() {
   const hero = state.players[mySeatIdx];
   const pot = state.pots.reduce((a, p) => a + p.amount, 0)
     + state.players.reduce((a, p) => a + p.betThisRound, 0);
+  const showRunItBoards = state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1;
   const myToCall = getToCall(state, mySeatIdx);
 
   const myScenario: ActionScenario = (() => {
-    if (state.toActSeat !== mySeatIdx || state.street === 'showdown' || state.street === 'idle') return 'wait';
+    if (state.toActSeat !== mySeatIdx || state.street === 'showdown' || state.street === 'idle' || state.street === 'runout-voting') return 'wait';
     if (myToCall === 0) return 'check';
     if (myToCall >= hero.stack) return 'allin';
     return 'call';
   })();
 
   const minRaiseTo = getMinRaiseTo(state, mySeatIdx);
+  const activePayouts = (() => {
+    if (state.street !== 'showdown') return [] as { seatIdx: number; amount: number }[];
+    if (state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1) {
+      const activeRun = activeRunIndex && activeRunPayoutReady ? state.runIt.runs.find((run) => run.index === activeRunIndex) : null;
+      return activeRun?.winners || [];
+    }
+    return state.winners || [];
+  })();
 
   const copyRoomLink = () => {
     navigator.clipboard?.writeText(`${location.origin}/room/${room.id}`);
@@ -354,14 +420,68 @@ export default function RoomPage() {
             <div className="text-[20px] font-semibold text-white/95 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">${pot.toLocaleString()}</div>
           </div>
 
-          {/* 公共牌 */}
-          <div className="community-cards absolute flex gap-2.5" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-            {[0, 1, 2, 3, 4].map((i) => {
-              const card = state.community[i];
-              if (!card) return <PlayingCard key={i} faceDown />;
-              return <PlayingCard key={i} card={card} glow />;
-            })}
-          </div>
+          {/* 公共牌 / 跑马多条牌面：多次跑马时直接发在桌面上，而不是另起浮层 */}
+          {showRunItBoards ? (
+            <div className="runit-table-boards absolute left-1/2 top-[50%] z-[6] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2">
+              {state.runIt!.runs.map((run) => {
+                const isActiveRun = activeRunIndex === run.index;
+                const isPastRun = activeRunIndex !== null && run.index < activeRunIndex;
+                const isDimmedRun = activeRunIndex !== null && !isActiveRun;
+                const baseCount = state.runIt?.baseCommunity.length ?? 0;
+                const visibleCount = activeRunIndex === null
+                  ? 5
+                  : isPastRun
+                  ? 5
+                  : isActiveRun
+                  ? activeRunRevealCount
+                  : baseCount;
+                return (
+                  <div
+                    key={run.index}
+                    className={`runit-table-board flex items-center gap-2 rounded-xl border px-3 py-2 backdrop-blur-[2px] transition-all duration-300 ${
+                      isActiveRun
+                        ? 'runit-table-board-active border-amber-200/90 bg-amber-300/15 shadow-[0_0_22px_rgba(244,217,122,0.45),0_6px_18px_rgba(0,0,0,0.35)]'
+                        : isDimmedRun
+                        ? 'border-white/10 bg-black/15 opacity-45 shadow-[0_6px_18px_rgba(0,0,0,0.25)]'
+                        : 'border-amber-400/35 bg-black/20 shadow-[0_6px_18px_rgba(0,0,0,0.35)]'
+                    }`}
+                  >
+                    <div className="w-12 text-center text-[10px] font-bold tracking-[2px] text-amber-200">RUN {run.index}</div>
+                    <div className="flex gap-1.5">
+                      {run.community.map((card, i) => {
+                        const revealed = i < visibleCount;
+                        return revealed ? (
+                          <PlayingCard key={`run-board-${run.index}-${i}-${card.rank}${card.suit}-up`} card={card} size="table" glow={isActiveRun || activeRunIndex === null} deal={isActiveRun && i >= baseCount} />
+                        ) : (
+                          <PlayingCard key={`run-board-${run.index}-${i}-down`} faceDown size="table" />
+                        );
+                      })}
+                    </div>
+                    <div className="w-20 truncate text-right text-[10px] font-semibold text-emerald-100/70">
+                      {(activeRunIndex === null || isPastRun || (isActiveRun && activeRunPayoutReady))
+                        ? run.winners.map((w) => state.players[w.seatIdx]?.name || `Seat ${w.seatIdx + 1}`).join(' / ')
+                        : '待揭晓'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="community-cards absolute flex gap-2.5" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+              {[0, 1, 2, 3, 4].map((i) => {
+                const card = state.community[i];
+                if (!card) return <PlayingCard key={`community-empty-${i}`} faceDown />;
+                return (
+                  <PlayingCard
+                    key={`community-${state.handNumber}-${i}-${card.rank}${card.suit}`}
+                    card={card}
+                    glow
+                    deal
+                  />
+                );
+              })}
+            </div>
+          )}
 
           {/* Dealer button */}
           {state.buttonSeat >= 0 && (() => {
@@ -382,9 +502,10 @@ export default function RoomPage() {
           {state.players.map((p) => {
             const pos = getSeatPosition(p.seatIdx, mySeatIdx);
             const isEmpty = !p.accountId || p.isSittingOut;
+            const payout = activePayouts.find((w) => w.seatIdx === p.seatIdx);
             return (
               <Seat
-                key={p.seatIdx}
+                key={`${p.seatIdx}-${payoutCycle}`}
                 player={isEmpty ? undefined : p}
                 isEmpty={isEmpty}
                 active={state.toActSeat === p.seatIdx}
@@ -395,7 +516,7 @@ export default function RoomPage() {
                   || p.revealCards
                 )}
                 revealCards={!p.isHero && p.revealCards && state.street === 'showdown'}
-                isWinner={state.street === 'showdown' && winnerSet.has(p.seatIdx)}
+                isWinner={state.street === 'showdown' && !!payout}
                 handLabel={state.street === 'showdown' && !p.hasFolded ? handLabels[p.seatIdx] : undefined}
                 position={pos}
                 rebuyAmount={p.seatIdx === mySeatIdx && p.outOfChips && p.rebuysLeft > 0 ? (state.config?.rebuyAmount ?? 0) : undefined}
@@ -404,30 +525,42 @@ export default function RoomPage() {
                   adapterRef.current?.rebuy();
                   if (room.mode === 'local') adapterRef.current?.startHand();
                 } : undefined}
+                payoutAmount={payout?.amount}
+                payoutActive={!!payout}
               />
             );
           })}
 
-          {/* Bet 筹码胶囊（包括 hero 自己的） */}
+          {/* Bet 筹码胶囊（包括 hero 自己的）：进入下一街时 betThisRound 会清零，
+              用 visualAction 让所有刚下注的筹码统一向底池收拢并淡出。 */}
           {state.players.map((p) => {
-            if (!p.betThisRound) return null;
+            const visualBet = p.visualAction
+              && ['call', 'bet', 'raise', 'allin'].includes(p.visualAction.kind)
+              && Date.now() - p.visualAction.ts < 1800
+              ? (p.visualAction.amount || 0)
+              : 0;
+            const chipAmount = p.betThisRound || visualBet;
+            if (!chipAmount) return null;
             const pos = getBetChipPosition(p.seatIdx, mySeatIdx);
+            const isCollecting = !p.betThisRound && visualBet > 0;
             return (
               <div
-                key={`bet-${p.seatIdx}`}
-                className="bet-chip absolute z-[7] flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                key={`bet-${p.seatIdx}-${isCollecting ? p.visualAction?.ts : 'live'}`}
+                className={`bet-chip absolute z-[7] flex items-center gap-1.5 px-2.5 py-1 rounded-full ${isCollecting ? 'bet-chip-collecting' : ''}`}
                 style={{ 
                   left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -50%)',
+                  ['--collect-tx' as any]: `${50 - pos.x}%`,
+                  ['--collect-ty' as any]: `${50 - pos.y}%`,
                   background: 'rgba(8,18,14,0.92)',
                   border: '1px solid rgba(212,175,55,0.55)',
                   boxShadow: '0 4px 10px rgba(0,0,0,0.6)',
-                }}
+                } as React.CSSProperties}
               >
                 <div className="bet-chip-icon w-5 h-5 rounded-full" style={{
                   background: 'radial-gradient(circle at 35% 30%, #ff7a7a, #c41e1e 60%, #7a0e0e)',
                   border: '2px dashed #fff',
                 }}></div>
-                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">${p.betThisRound.toLocaleString()}</div>
+                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">${chipAmount.toLocaleString()}</div>
               </div>
             );
           })}
@@ -454,8 +587,8 @@ export default function RoomPage() {
                   transition: 'filter 0.4s',
                 }}
               >
-                <PlayingCard card={hero.holeCards[0]} rotate={-7} />
-                <PlayingCard card={hero.holeCards[1]} rotate={7} />
+                <PlayingCard key={`hero-${state.handNumber}-0-${hero.holeCards[0].rank}${hero.holeCards[0].suit}`} card={hero.holeCards[0]} rotate={-7} deal dealDelay={80} />
+                <PlayingCard key={`hero-${state.handNumber}-1-${hero.holeCards[1].rank}${hero.holeCards[1].suit}`} card={hero.holeCards[1]} rotate={7} deal dealDelay={240} />
                 {hero.revealCards && (
                   <div
                     className="absolute left-1/2 -top-7 -translate-x-1/2 px-2.5 py-0.5 rounded text-[10px] font-extrabold tracking-[2px] whitespace-nowrap"
@@ -528,91 +661,7 @@ export default function RoomPage() {
             </button>
           )}
 
-          {/* 摊牌特效层 */}
-          {state.street === 'showdown' && state.winners && (
-            <>
-              {/* 桌中心辐射光（一次性脉冲） */}
-              <div
-                key={`burst-${state.handNumber}`}
-                className="absolute pointer-events-none z-[2]"
-                style={{
-                  left: '50%', top: '50%',
-                  width: 600, height: 600,
-                  transform: 'translate(-50%, -50%)',
-                  background: 'conic-gradient(from 0deg, rgba(255,235,180,0.0), rgba(255,235,180,0.55), rgba(255,235,180,0.0), rgba(255,235,180,0.55), rgba(255,235,180,0.0), rgba(255,235,180,0.55), rgba(255,235,180,0.0))',
-                  borderRadius: '50%',
-                  filter: 'blur(12px)',
-                  animation: 'showdownBurst 1.1s ease-out forwards',
-                }}
-              />
-              {/* 桌中心柔和外圈光 */}
-              <div
-                key={`halo-${state.handNumber}`}
-                className="absolute pointer-events-none z-[2]"
-                style={{
-                  left: '50%', top: '50%',
-                  width: 360, height: 360,
-                  transform: 'translate(-50%, -50%)',
-                  background: 'radial-gradient(circle, rgba(212,175,55,0.45) 0%, rgba(212,175,55,0.18) 40%, transparent 70%)',
-                  borderRadius: '50%',
-                  animation: 'showdownBurst 1.1s ease-out forwards',
-                }}
-              />
-
-              {/* 升级版筹码飞行：从底池炸开旋转飞向每个胜者 */}
-              {state.winners.flatMap((w, wi) => {
-                const target = getSeatPosition(w.seatIdx, mySeatIdx);
-                // 每个胜者飞 3 颗筹码，错峰发射
-                return [0, 1, 2].map((k) => (
-                  <div
-                    key={`fly-${w.seatIdx}-${k}`}
-                    className="absolute pointer-events-none z-[9]"
-                    style={{
-                      left: '50%', top: '46%',
-                      width: 26, height: 26,
-                      transform: 'translate(-50%, -50%)',
-                      animation: `chipBurst 1.3s cubic-bezier(0.5, 0.0, 0.6, 1.0) ${0.15 + wi * 0.18 + k * 0.08}s forwards`,
-                      ['--tx' as any]: `${(target.x - 50) + (k - 1) * 1.5}%`,
-                      ['--ty' as any]: `${(target.y - 46) + (k - 1) * 1}%`,
-                    } as React.CSSProperties}
-                  >
-                    <div
-                      className="w-full h-full rounded-full"
-                      style={{
-                        background: 'radial-gradient(circle at 35% 30%, #ffe39a, #d4af37 60%, #8a6f1a)',
-                        border: '2.5px dashed #fff',
-                        boxShadow: '0 0 14px rgba(212,175,55,0.95), 0 3px 6px rgba(0,0,0,0.5)',
-                      }}
-                    />
-                  </div>
-                ));
-              })}
-
-              {/* 顶部克制式胜者条（极简） */}
-              <div
-                className="absolute pointer-events-none z-[10] flex flex-col items-center gap-1"
-                style={{ top: '12%', left: '50%', transform: 'translateX(-50%)', animation: 'winnerBanner 0.4s ease-out' }}
-              >
-                {state.winners.map((w) => {
-                  const p = state.players[w.seatIdx];
-                  return (
-                    <div
-                      key={w.seatIdx}
-                      className="px-3.5 py-1 rounded-full text-[12px] font-semibold whitespace-nowrap"
-                      style={{
-                        background: 'rgba(8,18,14,0.85)',
-                        border: '1px solid rgba(212,175,55,0.6)',
-                        color: '#f4d97a',
-                        boxShadow: '0 0 12px rgba(212,175,55,0.4)',
-                      }}
-                    >
-                      {p.name} 赢得 <span className="text-white font-bold">${w.amount.toLocaleString()}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+          {/* 摊牌结果提示：不再从桌面中心发光/飞筹码，只保留聚焦赢家头像的收益动画 */}
         </div>
       </div>
 
@@ -620,6 +669,47 @@ export default function RoomPage() {
       {hero.holeCards.length === 2 && !hero.hasFolded && (
         <BestHand holeCards={hero.holeCards} community={state.community} />
       )}
+
+      {/* 跑马协商：移动端用底部卡片，避免挡住桌面关键区域 */}
+      {state.street === 'runout-voting' && state.runIt?.status === 'voting' && (() => {
+        const myVote = state.runIt?.votes?.[mySeatIdx];
+        const canVote = state.runIt?.eligibleSeats.includes(mySeatIdx);
+        const votedCount = Object.keys(state.runIt?.votes || {}).length;
+        const totalVote = state.runIt?.eligibleSeats.length || 0;
+        const remainingCards = Math.max(0, 5 - (state.runIt?.baseCommunity.length || state.community.length));
+        return (
+          <div className="runit-vote-panel fixed left-1/2 -translate-x-1/2 z-[70] w-[min(420px,calc(100vw-24px))] rounded-2xl border border-emerald-500/45 bg-[rgba(8,18,14,0.94)] p-4 shadow-[0_16px_36px_rgba(0,0,0,0.72),0_0_24px_rgba(16,185,129,0.18)] backdrop-blur-md">
+            <div className="text-[10px] tracking-[3px] text-emerald-300/75">RUN IT</div>
+            <div className="mt-1 text-lg font-bold text-white">是否跑马？</div>
+            <div className="mt-1 text-xs text-emerald-100/60">
+              还剩 {remainingCards} 张公共牌 · 已选择 {votedCount}/{totalVote} · 最终次数取所有人选择的最小值
+            </div>
+            {canVote ? (
+              myVote ? (
+                <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                  你选择了发 {myVote} 次，等待其他玩家...
+                </div>
+              ) : (
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {([1, 2, 3] as RunItCount[]).map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => adapterRef.current?.runItVote(count)}
+                      className="rounded-xl border border-emerald-500/35 bg-emerald-600/90 px-3 py-3 text-sm font-bold text-white shadow-[0_6px_0_rgba(0,80,55,0.75)] active:translate-y-[2px] active:shadow-[0_3px_0_rgba(0,80,55,0.75)]"
+                    >
+                      发 {count} 次
+                    </button>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-emerald-100/65">
+                等待本手仍在争夺底池的玩家协商跑马次数...
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 等待覆盖层（仅在线房间）：
           - 第一局未开始（handNumber === 0）→ Lobby：显示准备 + 开始
@@ -735,7 +825,7 @@ export default function RoomPage() {
       )}
 
       {/* 底部行动区 */}
-      {!state.waitingToStart && (
+      {!state.waitingToStart && state.street !== 'runout-voting' && (
         <div className="action-bar fixed bottom-0 left-0 right-0 z-40 px-6 py-4" style={{ background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.85))' }}>
           <BetPanel
             scenario={myScenario}

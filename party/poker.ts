@@ -8,8 +8,8 @@
  * - 房主创建房间时携带 RoomConfig；后续加入者复用同一份配置
  */
 import type * as Party from 'partykit/server';
-import type { GameState, Player, RoomConfig, ActionKind } from '../src/engine/types';
-import { applyAction, startNewHand, createInitialState, rebuyPlayer } from '../src/engine/engine';
+import type { GameState, Player, RoomConfig, ActionKind, RunItCount } from '../src/engine/types';
+import { applyAction, startNewHand, createInitialState, rebuyPlayer, voteRunIt } from '../src/engine/engine';
 import { AI_PERSONALITIES, decideAI } from '../src/ai/decide';
 
 interface JoinPayload {
@@ -30,6 +30,7 @@ type ClientMsg =
   | { type: 'startHand' }
   | { type: 'toggleReady' }
   | { type: 'rebuy' }
+  | { type: 'runItVote'; count: RunItCount }
   | { type: 'toggleShow' }
   | { type: 'leave' };
 
@@ -175,6 +176,15 @@ export default class PokerRoom implements Party.Server {
         // 补码成功后立即尝试自动续下一手。
         if (this.state.handNumber > 0 && (this.state.street === 'idle' || (this.state.street as any) === 'paused')) {
           this.tryStartNextHand();
+        }
+        break;
+      }
+      case 'runItVote': {
+        const next = voteRunIt(this.state, seat, msg.count);
+        this.state = next;
+        this.broadcastState();
+        if (next.street === 'showdown' && next.winners) {
+          this.scheduleNextHandAfterShowdown(next);
         }
         break;
       }
@@ -390,18 +400,22 @@ export default class PokerRoom implements Party.Server {
     this.broadcastState();
 
     if (next.street === 'showdown' && next.winners) {
-      // 自动开下一手（4-5s 给客户端展示）
-      const isMultiway = next.players.filter((p) => !p.hasFolded).length > 1;
-      const dur = isMultiway ? 5000 : 4000;
-      setTimeout(() => {
-        if (!this.state) return;
-        if (this.state.endingAfterHand) return;
-        this.tryStartNextHand();
-      }, dur);
+      this.scheduleNextHandAfterShowdown(next);
     } else {
       this.scheduleAI();
       this.scheduleTurnTimeout();
     }
+  }
+
+  private scheduleNextHandAfterShowdown(state: GameState) {
+    const isMultiway = state.players.filter((p) => !p.hasFolded).length > 1;
+    const runExtra = state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1 ? 2500 : 0;
+    const dur = (isMultiway ? 5000 : 4000) + runExtra;
+    setTimeout(() => {
+      if (!this.state) return;
+      if (this.state.endingAfterHand) return;
+      this.tryStartNextHand();
+    }, dur);
   }
 
   /**

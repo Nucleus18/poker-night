@@ -6,7 +6,7 @@
  *
  * RoomPage 只依赖此接口，UI 完全不感知是本地还是联机
  */
-import type { GameState, ActionKind } from '@/engine/types';
+import type { GameState, ActionKind, RunItCount } from '@/engine/types';
 
 export type Listener = (state: GameState) => void;
 
@@ -36,6 +36,9 @@ export interface IAdapter {
 
   /** Hero 切换"准备"状态（仅在线房间有意义） */
   toggleReady(): void;
+
+  /** 跑马投票（1/2/3 次） */
+  runItVote(count: RunItCount): void;
 
   /** Hero 补码 */
   rebuy(): void;

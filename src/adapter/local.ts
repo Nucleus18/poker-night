@@ -2,8 +2,8 @@
  * Local Adapter：本地引擎 + AI 跑全场
  * Hero 永远在座位 0
  */
-import type { GameState, ActionKind, Player } from '@/engine/types';
-import { applyAction, startNewHand, createInitialState, rebuyPlayer } from '@/engine/engine';
+import type { GameState, ActionKind, Player, RunItCount } from '@/engine/types';
+import { applyAction, startNewHand, createInitialState, rebuyPlayer, voteRunIt } from '@/engine/engine';
 import { AI_PERSONALITIES, decideAI } from '@/ai/decide';
 import type { RoomConfig } from '@/engine/types';
 import type { IAdapter, Listener, ConnectionStatus } from './types';
@@ -91,6 +91,10 @@ export class LocalAdapter implements IAdapter {
     next.players[this.mySeatIdx] = { ...next.players[this.mySeatIdx], showCardsEnabled: !next.players[this.mySeatIdx].showCardsEnabled };
     this.state = next;
     this.emit();
+  }
+
+  runItVote(count: RunItCount) {
+    this.setState(voteRunIt(this.state, this.mySeatIdx, count));
   }
 
   rebuy() {
