@@ -124,7 +124,15 @@ export interface ApplyActionResult {
 }
 
 export function applyAction(state: GameState, seatIdx: number, kind: ActionKind, amount?: number): GameState {
-  if (state.toActSeat !== seatIdx || state.street === 'idle' || state.street === 'showdown' || state.street === 'runout-voting' || state.finished) {
+  const actingPlayer = state.players[seatIdx];
+  if (
+    state.toActSeat !== seatIdx
+    || state.street === 'idle'
+    || state.street === 'showdown'
+    || state.street === 'runout-voting'
+    || state.finished
+    || !isInCurrentHand(actingPlayer)
+  ) {
     return state;
   }
   return produce(state, (s) => {
@@ -198,15 +206,16 @@ export function applyAction(state: GameState, seatIdx: number, kind: ActionKind,
 // ==================== 推进 turn / street ====================
 function advanceTurn(s: GameState) {
   // 1) 只剩一人未弃牌 → 直接结束
-  const notFolded = s.players.filter((p) => !p.hasFolded && (p.stack > 0 || p.isAllIn || p.totalBetThisHand > 0));
+  const handPlayers = s.players.filter(isInCurrentHand);
+  const notFolded = handPlayers.filter((p) => !p.hasFolded && (p.stack > 0 || p.isAllIn || p.totalBetThisHand > 0));
   if (notFolded.length === 1) {
     s.toActSeat = -1;
     finalizeHand(s);
     return;
   }
 
-  // 2) 还能行动的人 = 未弃牌且还有筹码（all-in 已无筹码）
-  const canAct = s.players.filter((p) => !p.hasFolded && p.stack > 0);
+  // 2) 还能行动的人 = 本手发过牌、未弃牌且还有筹码（all-in 已无筹码）
+  const canAct = handPlayers.filter((p) => !p.hasFolded && p.stack > 0);
 
   // 3) 全员 all-in（或只剩一人能行动且他已经把当前轮 call 平） → 直接进下一街
   if (canAct.length === 0) {
@@ -216,7 +225,7 @@ function advanceTurn(s: GameState) {
   if (canAct.length === 1) {
     const lone = canAct[0];
     // 唯一能行动的人，如果他下注已经匹配 currentBet（无需再行动），且其他人都 all-in，跳街
-    const opponentsAllIn = s.players.filter((p) => !p.hasFolded && p.seatIdx !== lone.seatIdx).every((p) => p.isAllIn);
+    const opponentsAllIn = handPlayers.filter((p) => !p.hasFolded && p.seatIdx !== lone.seatIdx).every((p) => p.isAllIn);
     if (opponentsAllIn && lone.betThisRound >= s.currentBet) {
       advanceStreet(s);
       return;
@@ -228,7 +237,7 @@ function advanceTurn(s: GameState) {
   for (let tries = 0; tries < s.players.length; tries++) {
     cur = (cur + 1) % s.players.length;
     const p = s.players[cur];
-    if (p.hasFolded || p.stack === 0) continue;
+    if (!isInCurrentHand(p) || p.hasFolded || p.stack === 0) continue;
     // 是否还需要他行动：投入小于 currentBet，或本轮还没行动过
     if (p.betThisRound < s.currentBet || p.lastAction === undefined) {
       s.toActSeat = cur;
@@ -243,9 +252,9 @@ function advanceTurn(s: GameState) {
 function advanceStreet(s: GameState) {
   collectIntoPots(s);
 
-  // 还能行动的人 = 未弃牌 + 还有筹码
-  // （p.stack > 0 自然排除了 isAllIn、isSittingOut、空位）
-  const stillCanAct = s.players.filter((p) => !p.hasFolded && p.stack > 0);
+  // 还能行动的人 = 本手发过牌 + 未弃牌 + 还有筹码
+  // 补码发生在本手中途时，玩家虽然 stack > 0，但没有 holeCards，不能进入本手下注轮次。
+  const stillCanAct = s.players.filter((p) => isInCurrentHand(p) && !p.hasFolded && p.stack > 0);
 
   // 多人 all-in / 已无后续下注决策，且公共牌未发完：进入跑马协商
   if (stillCanAct.length <= 1 && s.street !== 'river' && s.street !== 'showdown') {
@@ -283,7 +292,7 @@ function advanceStreet(s: GameState) {
   for (let tries = 0; tries < s.players.length; tries++) {
     cur = (cur + 1) % s.players.length;
     const p = s.players[cur];
-    if (!p.hasFolded && p.stack > 0) {
+    if (isInCurrentHand(p) && !p.hasFolded && p.stack > 0) {
       s.toActSeat = cur;
       return;
     }
@@ -469,7 +478,7 @@ function finalizeHand(s: GameState, opts: { skipCollect?: boolean } = {}) {
     }
   });
 
-  const alive = s.players.filter((p) => !p.hasFolded);
+  const alive = s.players.filter((p) => isInCurrentHand(p) && !p.hasFolded);
   const winners: { seatIdx: number; amount: number; handDescription?: string }[] = [];
 
   if (alive.length === 1) {
@@ -519,7 +528,7 @@ function revealShowdownCards(s: GameState, isMultiwayShowdown: boolean) {
   // 2) 一人收池（其他人都 fold）→ 收池者只有开了 showCardsEnabled 才 reveal
   // 3) 已 fold 的玩家 → 只有开了 showCardsEnabled 才 reveal
   s.players.forEach((p) => {
-    if (p.holeCards.length === 0) {
+    if (!isInCurrentHand(p)) {
       p.revealCards = false;
       return;
     }
@@ -547,6 +556,10 @@ function nextEligibleSeat(s: GameState, from: number): number {
     if (p.stack > 0 && !p.isSittingOut && !p.outOfChips) return cur;
   }
   return from;
+}
+
+function isInCurrentHand(p: Player): boolean {
+  return p.holeCards.length === 2 && !!p.accountId && !p.isSittingOut;
 }
 
 // ==================== 公共查询 ====================

@@ -301,7 +301,7 @@ export default function RoomPage() {
   const myToCall = getToCall(state, mySeatIdx);
 
   const myScenario: ActionScenario = (() => {
-    if (state.toActSeat !== mySeatIdx || state.street === 'showdown' || state.street === 'idle' || state.street === 'runout-voting') return 'wait';
+    if (hero.holeCards.length !== 2 || state.toActSeat !== mySeatIdx || state.street === 'showdown' || state.street === 'idle' || state.street === 'runout-voting') return 'wait';
     if (myToCall === 0) return 'check';
     if (myToCall >= hero.stack) return 'allin';
     return 'call';
@@ -523,7 +523,11 @@ export default function RoomPage() {
                 rebuysLeft={p.seatIdx === mySeatIdx ? p.rebuysLeft : undefined}
                 onRebuy={p.seatIdx === mySeatIdx && p.outOfChips && p.rebuysLeft > 0 ? () => {
                   adapterRef.current?.rebuy();
-                  if (room.mode === 'local') adapterRef.current?.startHand();
+                  // 本地模式只有在非进行中状态才自动开下一手。
+                  // 如果其他玩家正在打当前手，补码只补到自己的 stack，等本手自然结束后再参与下一手。
+                  if (room.mode === 'local' && ['idle', 'paused', 'showdown'].includes(state.street)) {
+                    adapterRef.current?.startHand();
+                  }
                 } : undefined}
                 payoutAmount={payout?.amount}
                 payoutActive={!!payout}
