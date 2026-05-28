@@ -92,9 +92,11 @@ export default function RoomPage() {
       const a = adapterRef.current;
       if (a) {
         const cur = a.getState();
-        // 简单做法：直接 mutate 不会触发，但这里就此一例外
-        (cur as any).endingAfterHand = true;
-        setState({ ...cur });
+        if (cur) {
+          // 简单做法：直接 mutate 不会触发，但这里就此一例外
+          (cur as any).endingAfterHand = true;
+          setState({ ...cur });
+        }
       }
     }
   }, [secondsLeft, state]);
