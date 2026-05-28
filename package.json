@@ -5,25 +5,31 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "party": "partykit dev",
+    "dev:all": "concurrently -k -n web,party -c green,yellow \"npm:dev\" \"npm:party\"",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:party": "partykit deploy"
   },
   "dependencies": {
+    "framer-motion": "^11.11.1",
+    "howler": "^2.2.4",
+    "immer": "^10.1.1",
+    "partykit": "^0.0.115",
+    "partysocket": "^1.1.19",
+    "pokersolver": "^2.1.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",
-    "zustand": "^4.5.5",
-    "immer": "^10.1.1",
-    "pokersolver": "^2.1.4",
-    "framer-motion": "^11.11.1",
-    "howler": "^2.2.4"
+    "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@types/howler": "^2.2.12",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
-    "@types/howler": "^2.2.12",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.2",

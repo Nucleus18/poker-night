@@ -4,6 +4,8 @@ import { Hand } from 'pokersolver';
 import { useAuthStore } from '@/auth/store';
 import { useRoomStore } from '@/room/store';
 import { LocalAdapter, buildPlayers } from '@/adapter/local';
+import { SocketAdapter } from '@/adapter/socket';
+import type { IAdapter, ConnectionStatus } from '@/adapter/types';
 import type { GameState } from '@/engine/types';
 import { getToCall, getMinRaiseTo } from '@/engine/engine';
 import { audioBus } from '@/audio/bus';
@@ -21,13 +23,15 @@ export default function RoomPage() {
   const navigate = useNavigate();
   const room = id ? getRoom(id) : undefined;
 
-  const adapterRef = useRef<LocalAdapter | null>(null);
+  const adapterRef = useRef<IAdapter | null>(null);
   const [state, setState] = useState<GameState | null>(null);
   const [muted, setMuted] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [rebuyOffered, setRebuyOffered] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
+  const [connStatus, setConnStatus] = useState<ConnectionStatus>('open');
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   // 初始化 adapter
   useEffect(() => {
@@ -35,19 +39,39 @@ export default function RoomPage() {
       navigate('/');
       return;
     }
-    const players = buildPlayers(room.config, {
-      id: user.id,
-      name: user.name,
-      avatar: user.avatar,
-      colorPair: user.colorPair,
-    });
-    const adapter = new LocalAdapter(players, room.config, (e) => audioBus.play(e as any));
+
+    let adapter: IAdapter;
+
+    if (room.mode === 'online') {
+      // 联机：连 PartyKit
+      const host = (import.meta as any).env?.VITE_PARTYKIT_HOST || 'localhost:1999';
+      const sa = new SocketAdapter({
+        host,
+        roomCode: room.id,
+        user: { id: user.id, name: user.name, avatar: user.avatar, colorPair: user.colorPair },
+        config: room.isHost ? room.config : undefined,
+        soundCb: (e) => audioBus.play(e as any),
+      });
+      sa.onStatusChange(setConnStatus);
+      sa.onError(setErrMsg);
+      adapter = sa;
+    } else {
+      // 本地：纯前端引擎 + AI
+      const players = buildPlayers(room.config!, {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar,
+        colorPair: user.colorPair,
+      });
+      const la = new LocalAdapter(players, room.config!, (e) => audioBus.play(e as any));
+      adapter = la;
+      // 自动开第一手（联机模式由服务端驱动）
+      setTimeout(() => la.startHand(), 600);
+    }
+
     adapterRef.current = adapter;
     const unsub = adapter.subscribe(setState);
-    setSecondsLeft(room.config.durationMin * 60);
-
-    // 自动开第一手
-    setTimeout(() => adapter.startHand(), 600);
+    setSecondsLeft((room.config?.durationMin ?? 60) * 60);
 
     return () => { unsub(); adapter.destroy(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,8 +111,8 @@ export default function RoomPage() {
           setShowLeaderboard(true);
         } else {
           // 自动开下一手（如果 hero 没破产或已补码）
-          const hero = state.players[0];
-          if (hero.outOfChips && hero.rebuysLeft > 0) {
+          const me = state.players[adapterRef.current?.mySeatIdx ?? 0];
+          if (me.outOfChips && me.rebuysLeft > 0) {
             setRebuyOffered(true);
           } else {
             adapterRef.current?.startHand();
@@ -126,19 +150,20 @@ export default function RoomPage() {
 
   if (!room || !state) return <div className="h-full w-full flex items-center justify-center text-emerald-100/50">加载中...</div>;
 
-  const hero = state.players[0];
+  const mySeatIdx = adapterRef.current?.mySeatIdx ?? 0;
+  const hero = state.players[mySeatIdx];
   const pot = state.pots.reduce((a, p) => a + p.amount, 0)
     + state.players.reduce((a, p) => a + p.betThisRound, 0);
-  const myToCall = getToCall(state, 0);
+  const myToCall = getToCall(state, mySeatIdx);
 
   const myScenario: ActionScenario = (() => {
-    if (state.toActSeat !== 0 || state.street === 'showdown' || state.street === 'idle') return 'wait';
+    if (state.toActSeat !== mySeatIdx || state.street === 'showdown' || state.street === 'idle') return 'wait';
     if (myToCall === 0) return 'check';
     if (myToCall >= hero.stack) return 'allin';
     return 'call';
   })();
 
-  const minRaiseTo = getMinRaiseTo(state, 0);
+  const minRaiseTo = getMinRaiseTo(state, mySeatIdx);
 
   return (
     <div className="h-full w-full flex flex-col">
@@ -149,13 +174,31 @@ export default function RoomPage() {
           <button onClick={() => navigate('/')} className="pill">大厅</button>
         </div>
         <div className="flex flex-col items-center gap-0.5">
-          <div className="text-sm">{room.config.name} · 第 {state.handNumber} 手</div>
+          <div className="text-sm">{(state.config?.name || room.config?.name || '房间')} · 第 {state.handNumber} 手</div>
           <div className="w-7 h-0.5 bg-emerald-500 rounded"></div>
         </div>
         <div className="flex items-center gap-2">
           <div className={`pill ${secondsLeft < 60 ? 'text-red-300 border-red-500/50' : ''}`}>
             ⏱ {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
           </div>
+          {room.mode === 'online' && (
+            <div
+              className="pill flex items-center gap-1.5"
+              style={{
+                color: connStatus === 'open' ? '#10b981' : connStatus === 'reconnecting' ? '#f4d97a' : '#ff8585',
+                borderColor: connStatus === 'open' ? 'rgba(16,185,129,0.4)' : connStatus === 'reconnecting' ? 'rgba(244,217,122,0.4)' : 'rgba(255,133,133,0.4)',
+              }}
+              title={`房间码 ${room.id}（点击复制）`}
+              onClick={() => {
+                navigator.clipboard?.writeText(`${location.origin}/room/${room.id}`);
+                setShowToast('房间链接已复制');
+                setTimeout(() => setShowToast(null), 2000);
+              }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: connStatus === 'open' ? '#10b981' : connStatus === 'reconnecting' ? '#f4d97a' : '#ff8585' }} />
+              {connStatus === 'open' ? room.id : connStatus === 'reconnecting' ? '重连中' : '未连接'}
+            </div>
+          )}
           <div className="bg-white/[0.06] border border-white/10 rounded-full px-3.5 py-1.5 text-[13px]">
             ${hero.stack.toLocaleString()}
           </div>
@@ -488,10 +531,10 @@ export default function RoomPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]">
           <div className="bg-black/80 border border-emerald-500 rounded-2xl p-6 w-[360px] backdrop-blur-md">
             <h3 className="text-lg font-semibold mb-2">筹码用完了</h3>
-            <p className="text-sm text-emerald-100/70 mb-4">补 ${room.config.rebuyAmount.toLocaleString()} 继续？剩余补码次数：{hero.rebuysLeft}</p>
+            <p className="text-sm text-emerald-100/70 mb-4">补 ${(state.config?.rebuyAmount ?? 0).toLocaleString()} 继续？剩余补码次数：{hero.rebuysLeft}</p>
             <div className="flex gap-3">
               <button
-                onClick={() => { adapterRef.current?.rebuy(0); setRebuyOffered(false); adapterRef.current?.startHand(); }}
+                onClick={() => { adapterRef.current?.rebuy(); setRebuyOffered(false); adapterRef.current?.startHand(); }}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded font-semibold"
               >补码</button>
               <button

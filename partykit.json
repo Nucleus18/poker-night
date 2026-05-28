@@ -1,0 +1,8 @@
+{
+  "name": "poker-party",
+  "main": "party/poker.ts",
+  "parties": {
+    "poker": "party/poker.ts"
+  },
+  "compatibilityDate": "2024-09-01"
+}

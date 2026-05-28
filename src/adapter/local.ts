@@ -1,15 +1,15 @@
 /**
- * Local Adapter：把引擎和 AI 串起来，提供给 React 订阅。
- * 二期联机时换成 SocketAdapter，UI 不动。
+ * Local Adapter：本地引擎 + AI 跑全场
+ * Hero 永远在座位 0
  */
 import type { GameState, ActionKind, Player } from '@/engine/types';
 import { applyAction, startNewHand, createInitialState, rebuyPlayer } from '@/engine/engine';
 import { AI_PERSONALITIES, decideAI } from '@/ai/decide';
 import type { RoomConfig } from '@/engine/types';
+import type { IAdapter, Listener, ConnectionStatus } from './types';
 
-type Listener = (state: GameState) => void;
-
-export class LocalAdapter {
+export class LocalAdapter implements IAdapter {
+  readonly mySeatIdx = 0;
   private state: GameState;
   private listeners: Set<Listener> = new Set();
   private aiTimer: number | null = null;
@@ -20,6 +20,7 @@ export class LocalAdapter {
     this.soundCb = soundCb;
   }
 
+  getConnectionStatus(): ConnectionStatus { return 'open'; }
   getState(): GameState { return this.state; }
 
   subscribe(fn: Listener): () => void {
@@ -45,8 +46,8 @@ export class LocalAdapter {
 
   /** Hero 行动入口 */
   hero(kind: ActionKind, amount?: number) {
-    if (this.state.toActSeat !== 0) return;
-    this.dispatch(0, kind, amount);
+    if (this.state.toActSeat !== this.mySeatIdx) return;
+    this.dispatch(this.mySeatIdx, kind, amount);
   }
 
   /** 通用行动派发（AI/Hero 共用） */
@@ -58,7 +59,6 @@ export class LocalAdapter {
     else if (kind === 'check') this.soundCb?.('check');
     this.setState(next);
 
-    // 摊牌
     if (next.street === 'showdown' && next.winners) {
       this.soundCb?.('win');
     }
@@ -85,13 +85,13 @@ export class LocalAdapter {
   /** Hero 切换"秀牌"偏好（整局有效） */
   toggleShowCards() {
     const next = { ...this.state, players: this.state.players.map((p) => ({ ...p })) };
-    next.players[0] = { ...next.players[0], showCardsEnabled: !next.players[0].showCardsEnabled };
+    next.players[this.mySeatIdx] = { ...next.players[this.mySeatIdx], showCardsEnabled: !next.players[this.mySeatIdx].showCardsEnabled };
     this.state = next;
     this.emit();
   }
 
-  rebuy(seatIdx: number) {
-    this.setState(rebuyPlayer(this.state, seatIdx));
+  rebuy() {
+    this.setState(rebuyPlayer(this.state, this.mySeatIdx));
   }
 
   destroy() {

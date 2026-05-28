@@ -1,14 +1,19 @@
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuthStore, PRESET_COLORS } from '@/auth/store';
-import { useRoomStore } from '@/room/store';
+import { useRoomStore, generateRoomCode } from '@/room/store';
+
+type Mode = 'local' | 'create' | 'join';
 
 export default function LobbyPage() {
   const user = useAuthStore((s) => s.user)!;
   const logout = useAuthStore((s) => s.logout);
-  const createRoom = useRoomStore((s) => s.createRoom);
+  const createLocalRoom = useRoomStore((s) => s.createLocalRoom);
+  const createOnlineRoom = useRoomStore((s) => s.createOnlineRoom);
+  const joinOnlineRoom = useRoomStore((s) => s.joinOnlineRoom);
   const navigate = useNavigate();
 
+  const [mode, setMode] = useState<Mode>('local');
   const [name, setName] = useState('朋友的局');
   const [smallBlind, setSmallBlind] = useState(25);
   const [bigBlind, setBigBlind] = useState(50);
@@ -17,20 +22,32 @@ export default function LobbyPage() {
   const [maxRebuys, setMaxRebuys] = useState(3);
   const [durationMin, setDurationMin] = useState(60);
   const [aiCount, setAiCount] = useState(5);
+  const [joinCode, setJoinCode] = useState('');
+  const [joinErr, setJoinErr] = useState('');
 
   const start = () => {
-    const id = createRoom({
-      name,
-      smallBlind,
-      bigBlind,
-      startingStack,
-      rebuyAmount,
-      maxRebuys,
-      durationMin,
-      aiCount,
+    const config = {
+      name, smallBlind, bigBlind, startingStack, rebuyAmount, maxRebuys, durationMin, aiCount,
       step: smallBlind,
-    });
-    navigate(`/room/${id}`);
+    };
+    if (mode === 'local') {
+      const id = createLocalRoom(config);
+      navigate(`/room/${id}`);
+    } else if (mode === 'create') {
+      const code = generateRoomCode();
+      createOnlineRoom(code, config);
+      navigate(`/room/${code}`);
+    }
+  };
+
+  const joinRoom = () => {
+    const code = joinCode.trim().toUpperCase();
+    if (!/^[A-Z2-9]{6}$/.test(code)) {
+      setJoinErr('房间码格式：6 位大写字母或数字');
+      return;
+    }
+    joinOnlineRoom(code);
+    navigate(`/room/${code}`);
   };
 
   return (
@@ -48,52 +65,103 @@ export default function LobbyPage() {
 
       <main className="flex-1 overflow-auto p-8">
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-xl font-medium mb-1">创建房间</h2>
-          <p className="text-sm text-emerald-100/50 mb-6">设置参数后开局，朋友们登录任意账号即可进入。</p>
-
-          <div className="bg-black/30 border border-white/10 rounded-2xl p-6 space-y-5">
-            <Field label="房间名">
-              <input className="input-base w-full" value={name} onChange={(e) => setName(e.target.value)} />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="小盲">
-                <input type="number" className="input-base w-full" value={smallBlind} onChange={(e) => {
-                  const v = +e.target.value || 0; setSmallBlind(v); if (v * 2 !== bigBlind) setBigBlind(v * 2);
-                }} />
-              </Field>
-              <Field label="大盲">
-                <input type="number" className="input-base w-full" value={bigBlind} onChange={(e) => setBigBlind(+e.target.value || 0)} />
-              </Field>
-              <Field label="起始筹码">
-                <input type="number" className="input-base w-full" value={startingStack} onChange={(e) => {
-                  const v = +e.target.value || 0; setStartingStack(v); setRebuyAmount(v);
-                }} />
-              </Field>
-              <Field label="补码额度">
-                <input type="number" className="input-base w-full" value={rebuyAmount} onChange={(e) => setRebuyAmount(+e.target.value || 0)} />
-              </Field>
-              <Field label="最多补码次数">
-                <input type="number" className="input-base w-full" value={maxRebuys} onChange={(e) => setMaxRebuys(+e.target.value || 0)} />
-              </Field>
-              <Field label="限时（分钟）">
-                <select className="input-base w-full" value={durationMin} onChange={(e) => setDurationMin(+e.target.value)}>
-                  {[15, 30, 60, 90, 120].map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </Field>
-            </div>
-
-            <Field label={`AI 玩家数：${aiCount}（其余空位等真人加入）`}>
-              <input type="range" className="range-input" min={0} max={8} value={aiCount} onChange={(e) => setAiCount(+e.target.value)} />
-            </Field>
-
-            <button onClick={start} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg tracking-wider transition-colors">
-              开局
-            </button>
+          {/* 模式切换 */}
+          <div className="flex gap-2 mb-6">
+            <ModeTab active={mode === 'local'} onClick={() => setMode('local')}>
+              <div className="text-base font-semibold">本地</div>
+              <div className="text-[11px] opacity-60">vs AI · 立刻开打</div>
+            </ModeTab>
+            <ModeTab active={mode === 'create'} onClick={() => setMode('create')}>
+              <div className="text-base font-semibold">创建朋友局</div>
+              <div className="text-[11px] opacity-60">生成房间码 · 分享给朋友</div>
+            </ModeTab>
+            <ModeTab active={mode === 'join'} onClick={() => setMode('join')}>
+              <div className="text-base font-semibold">加入房间</div>
+              <div className="text-[11px] opacity-60">输入房间码加入</div>
+            </ModeTab>
           </div>
+
+          {mode === 'join' ? (
+            <div className="bg-black/30 border border-white/10 rounded-2xl p-6">
+              <Field label="房间码">
+                <input
+                  className="input-base w-full font-mono text-2xl tracking-[8px] text-center uppercase"
+                  value={joinCode}
+                  onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinErr(''); }}
+                  maxLength={6}
+                  placeholder="ABCDEF"
+                  autoFocus
+                />
+              </Field>
+              {joinErr && <div className="text-red-400 text-xs mt-2">{joinErr}</div>}
+              <button
+                onClick={joinRoom}
+                disabled={joinCode.length !== 6}
+                className="w-full mt-5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/30 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg tracking-wider transition-colors"
+              >
+                加入
+              </button>
+            </div>
+          ) : (
+            <div className="bg-black/30 border border-white/10 rounded-2xl p-6 space-y-5">
+              <Field label="房间名">
+                <input className="input-base w-full" value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="小盲">
+                  <input type="number" className="input-base w-full" value={smallBlind} onChange={(e) => {
+                    const v = +e.target.value || 0; setSmallBlind(v); if (v * 2 !== bigBlind) setBigBlind(v * 2);
+                  }} />
+                </Field>
+                <Field label="大盲">
+                  <input type="number" className="input-base w-full" value={bigBlind} onChange={(e) => setBigBlind(+e.target.value || 0)} />
+                </Field>
+                <Field label="起始筹码">
+                  <input type="number" className="input-base w-full" value={startingStack} onChange={(e) => {
+                    const v = +e.target.value || 0; setStartingStack(v); setRebuyAmount(v);
+                  }} />
+                </Field>
+                <Field label="补码额度">
+                  <input type="number" className="input-base w-full" value={rebuyAmount} onChange={(e) => setRebuyAmount(+e.target.value || 0)} />
+                </Field>
+                <Field label="最多补码次数">
+                  <input type="number" className="input-base w-full" value={maxRebuys} onChange={(e) => setMaxRebuys(+e.target.value || 0)} />
+                </Field>
+                <Field label="限时（分钟）">
+                  <select className="input-base w-full" value={durationMin} onChange={(e) => setDurationMin(+e.target.value)}>
+                    {[15, 30, 60, 90, 120].map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              <Field label={`AI 玩家数：${aiCount}${mode === 'create' ? '（其余空位等真人加入）' : ''}`}>
+                <input type="range" className="range-input" min={0} max={8} value={aiCount} onChange={(e) => setAiCount(+e.target.value)} />
+              </Field>
+
+              <button onClick={start} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg tracking-wider transition-colors">
+                {mode === 'local' ? '开局' : '创建房间'}
+              </button>
+            </div>
+          )}
         </div>
       </main>
     </div>
+  );
+}
+
+function ModeTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex-1 px-4 py-3 rounded-lg text-left transition-all ${
+        active
+          ? 'bg-emerald-600/20 border border-emerald-500 text-white'
+          : 'bg-white/5 border border-white/10 text-emerald-100/70 hover:bg-white/10'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
