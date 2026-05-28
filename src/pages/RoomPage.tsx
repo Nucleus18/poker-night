@@ -133,7 +133,7 @@ export default function RoomPage() {
     }
   }, [secondsLeft, state]);
 
-  // 监听摊牌完成 → 开下一手 或 结束
+  // 监听摊牌完成 → 本地模式驱动下一手 / 限时结束触发结算
   useEffect(() => {
     if (!state) return;
     if (state.street === 'showdown' && state.winners) {
@@ -143,19 +143,39 @@ export default function RoomPage() {
       const t = setTimeout(() => {
         if (state.endingAfterHand) {
           setShowLeaderboard(true);
-        } else if (room?.mode === 'local') {
-          // 本地模式由客户端驱动下一手；联机模式由 PartyKit 服务端驱动，避免重复 startHand 导致局数虚高
+          return;
+        }
+        // 本地模式由客户端驱动下一手；联机模式由 PartyKit 服务端驱动，避免重复 startHand 导致局数虚高
+        if (room?.mode === 'local') {
           const me = state.players[adapterRef.current?.mySeatIdx ?? 0];
-          if (me.outOfChips && me.rebuysLeft > 0) {
+          // 本地模式自己破产 → 弹补码窗（不直接 startHand，等用户选择）
+          if (me?.outOfChips && me.rebuysLeft > 0) {
             setRebuyOffered(true);
-          } else {
-            adapterRef.current?.startHand();
+            return;
           }
+          adapterRef.current?.startHand();
         }
       }, showcaseDuration);
       return () => clearTimeout(t);
     }
   }, [state]);
+
+  // 联机模式下：自己破产且还有补码次数 → 弹补码窗。
+  // 单独 effect 监听 hero 状态，避免依赖 showdown 时机（服务端推 paused 后，
+  // showdown effect 的 setTimeout 会被清掉，那条路径无法触发弹窗）。
+  useEffect(() => {
+    if (!state) return;
+    if (room?.mode !== 'online') return;
+    if (showLeaderboard) return;
+    const me = state.players[adapterRef.current?.mySeatIdx ?? 0];
+    if (me?.outOfChips && me.rebuysLeft > 0 && !rebuyOffered) {
+      // 仅在牌局非进行中（idle / paused / showdown）时弹，避免覆盖正在打的本手 UI
+      const s = state.street as string;
+      if (s === 'idle' || s === 'paused' || s === 'showdown') {
+        setRebuyOffered(true);
+      }
+    }
+  }, [state, room?.mode, showLeaderboard, rebuyOffered]);
 
   // 静音切换
   useEffect(() => { audioBus.setMuted(muted); }, [muted]);
@@ -583,8 +603,31 @@ export default function RoomPage() {
         <BestHand holeCards={hero.holeCards} community={state.community} />
       )}
 
-      {/* 等待开始游戏覆盖层（仅在线房间且未开第一手） */}
-      {state.waitingToStart && room.mode === 'online' && (() => {
+      {/* 等待覆盖层（仅在线房间）：
+          - 第一局未开始（handNumber === 0）→ Lobby：显示准备 + 开始
+          - 已经开过局（handNumber > 0）但临时人不够 → Paused：仅显示等待人加入，不再有"准备"概念 */}
+      {state.waitingToStart && room.mode === 'online' && state.handNumber > 0 && (
+        <div className="waiting-overlay fixed left-1/2 -translate-x-1/2 z-[55] flex flex-col items-center gap-3" style={{ bottom: 200 }}>
+          <div
+            className="px-5 py-3 rounded-xl backdrop-blur-md text-center"
+            style={{
+              background: 'rgba(8,18,14,0.92)',
+              border: '1.5px solid rgba(244,217,122,0.5)',
+              boxShadow: '0 0 24px rgba(244,217,122,0.18), 0 8px 20px rgba(0,0,0,0.6)',
+              minWidth: 320,
+            }}
+          >
+            <div className="text-[10px] tracking-[3px] text-amber-200/80 mb-1">PAUSED</div>
+            <div className="text-lg font-semibold text-white mb-1">等待玩家加入</div>
+            <div className="text-[12px] text-emerald-100/60">
+              在场人数不足 2，分享房间码邀请朋友进入即可继续
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lobby（首次开局前）覆盖层 */}
+      {state.waitingToStart && room.mode === 'online' && state.handNumber === 0 && (() => {
         const realPlayers = state.players.filter((p) => !p.isSittingOut && !p.isAI && p.accountId);
         const readyCount = realPlayers.filter((p) => p.ready).length;
         const allReady = readyCount === realPlayers.length;
@@ -718,13 +761,18 @@ export default function RoomPage() {
 
       {/* 补码弹窗 */}
       {rebuyOffered && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100]">
-          <div className="bg-black/80 border border-emerald-500 rounded-2xl p-6 w-[360px] backdrop-blur-md">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4">
+          <div className="bg-black/80 border border-emerald-500 rounded-2xl p-6 w-full max-w-[360px] backdrop-blur-md">
             <h3 className="text-lg font-semibold mb-2">筹码用完了</h3>
             <p className="text-sm text-emerald-100/70 mb-4">补 ${(state.config?.rebuyAmount ?? 0).toLocaleString()} 继续？剩余补码次数：{hero.rebuysLeft}</p>
             <div className="flex gap-3">
               <button
-                onClick={() => { adapterRef.current?.rebuy(); setRebuyOffered(false); adapterRef.current?.startHand(); }}
+                onClick={() => {
+                  adapterRef.current?.rebuy();
+                  setRebuyOffered(false);
+                  // 仅本地模式由客户端驱动开下一手；联机模式补码后由服务端 tryStartNextHand 接续
+                  if (room?.mode === 'local') adapterRef.current?.startHand();
+                }}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded font-semibold"
               >补码</button>
               <button

@@ -62,6 +62,8 @@ export default class PokerRoom implements Party.Server {
   private hostAccountId: string | null = null;
   private aiTimer: ReturnType<typeof setTimeout> | null = null;
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 断线宽限期定时器：seatIdx → timer。在窗口内重连可避免被标 sittingOut */
+  private disconnectTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   constructor(readonly room: Party.Room) {}
 
@@ -207,6 +209,12 @@ export default class PokerRoom implements Party.Server {
         this.state = next;
         this.connToSeat.delete(sender.id);
         this.seatToConn.delete(seat);
+        // 主动离开是显式行为，立刻取消可能存在的断线宽限定时器
+        const pendingTimer = this.disconnectTimers.get(seat);
+        if (pendingTimer) {
+          clearTimeout(pendingTimer);
+          this.disconnectTimers.delete(seat);
+        }
         // 不删 seatToAccount：保留账号绑定，避免重连时被识别成新人占别的位置
         this.broadcastState();
 
@@ -225,24 +233,35 @@ export default class PokerRoom implements Party.Server {
     if (seat === undefined) return;
     this.connToSeat.delete(conn.id);
     this.seatToConn.delete(seat);
-    // 不立刻 remove player：保留座位等他重连。如果当前是他的回合，标 sittingOut → 引擎兜底跳过
-    // 简单做法：把他变成 isSittingOut=true，下手不再发牌
-    if (this.state) {
+    if (!this.state) return;
+
+    // 若当前正轮到他行动 → 立即自动 fold，避免阻塞牌局
+    if (this.state.toActSeat === seat) {
+      this.dispatch(seat, 'fold');
+    }
+
+    // 断线宽限期：不立刻 isSittingOut，给玩家短暂窗口重连。
+    // 这样 showdown→tryStartNextHand 间隙的瞬时断线 / 切换网络 不会让"还能继续打"被误判为离场，
+    // 进而导致整桌进入 paused 并清空 ready 状态。
+    const GRACE_MS = 8000;
+    const existing = this.disconnectTimers.get(seat);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.disconnectTimers.delete(seat);
+      // 真的没回来：标 sittingOut（下一手不发牌；保留账号绑定，未来仍可重连）
+      if (!this.state) return;
+      // 如果这期间该 seat 已被新连接占用（重连成功），就不标
+      if (this.seatToConn.has(seat)) return;
       const next = { ...this.state, players: this.state.players.map((pp) => ({ ...pp })) };
-      // 若当前正轮到他行动 → 自动 fold
-      if (this.state.toActSeat === seat) {
-        this.dispatch(seat, 'fold');
-      }
-      // 标记离场（下一手不发牌；如果他重连可恢复）
       next.players[seat] = { ...next.players[seat], isSittingOut: true };
       this.state = next;
       this.broadcastState();
 
-      // 断线后人数不足 → 进入暂停（如果当前在牌局中且只剩 1 人，等当前手 finalize 后会自然走 tryStartNextHand）
-      if (this.state.street === 'idle' || this.state.street === 'paused') {
+      if (this.state.street === 'idle' || (this.state.street as any) === 'paused') {
         this.tryStartNextHand();
       }
-    }
+    }, GRACE_MS);
+    this.disconnectTimers.set(seat, timer);
   }
 
   // ============ 内部 ============
@@ -314,7 +333,10 @@ export default class PokerRoom implements Party.Server {
         this.send(sender, { type: 'error', message: '房间已满' });
         return;
       }
-      // 占座（默认未准备，需要手动点准备）
+      // 占座
+      // 一旦房间开过局（handNumber > 0），新人不再走"准备/开始"流程：
+      // 直接以 ready=true 入场，由服务端尽可能自动接续下一手。
+      const gameAlreadyStarted = this.state.handNumber > 0;
       const next = { ...this.state, players: this.state.players.map((pp) => ({ ...pp })) };
       next.players[assignedSeat] = {
         ...next.players[assignedSeat],
@@ -328,12 +350,17 @@ export default class PokerRoom implements Party.Server {
         handsPlayed: 0,
         isAI: false,
         isSittingOut: false,
-        ready: false,
+        ready: gameAlreadyStarted ? true : false,
       };
       this.state = next;
       this.seatToAccount.set(assignedSeat, msg.user.id);
     } else {
-      // 重连，恢复 isSittingOut=false
+      // 重连，恢复 isSittingOut=false，并取消断线宽限定时器
+      const pendingTimer = this.disconnectTimers.get(assignedSeat);
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        this.disconnectTimers.delete(assignedSeat);
+      }
       const next = { ...this.state, players: this.state.players.map((pp) => ({ ...pp })) };
       next.players[assignedSeat] = { ...next.players[assignedSeat], isSittingOut: false };
       this.state = next;
@@ -344,6 +371,11 @@ export default class PokerRoom implements Party.Server {
 
     this.send(sender, { type: 'state', state: this.viewFor(assignedSeat), mySeatIdx: assignedSeat });
     this.broadcastState();
+
+    // 如果房间已经开过局且当前处于暂停（人不够），新人加入 / 重连后立即尝试自动续局。
+    if (this.state.handNumber > 0 && (this.state.street === 'idle' || (this.state.street as any) === 'paused')) {
+      this.tryStartNextHand();
+    }
   }
 
   private dispatch(seatIdx: number, kind: ActionKind, amount?: number) {
@@ -368,17 +400,22 @@ export default class PokerRoom implements Party.Server {
   }
 
   /**
-   * 尝试开新一手；人不够 / 没人 ready 时进入 paused 等待状态
+   * 尝试开新一手；当前能立刻参与发牌的玩家不足 2 人时进入 paused 等待状态。
+   *
+   * 注意："能立刻参与发牌"的判定与 engine.startNewHand 中的 eligible 保持一致：
+   *   p.stack > 0 && !p.outOfChips && !p.isSittingOut
+   * 已经破产但还能补码的玩家虽然没"离场"，但本手发牌时不会被发到，
+   * 因此不算"立刻能玩的"。这样可以避免 startNewHand 内部因 eligible<2 默默回到
+   * idle 但 waitingToStart 没被正确设置的尴尬状态。
    */
   private tryStartNextHand() {
     if (!this.state) return;
-    // 还能继续打的玩家：在场（未离场）+ 有筹码 / 可补码
-    const activePlayers = this.state.players.filter(
-      (p) => p.accountId && !p.isSittingOut && !p.hasLeft && (p.stack > 0 || (p.outOfChips && p.rebuysLeft > 0)),
+    const eligible = this.state.players.filter(
+      (p) => p.accountId && !p.hasLeft && !p.isSittingOut && !p.outOfChips && p.stack > 0,
     );
 
-    if (activePlayers.length < 2) {
-      // 暂停等待新人加入
+    if (eligible.length < 2) {
+      // 暂停等待新人加入 / 已破产玩家补码
       this.enterPaused();
       return;
     }
@@ -399,11 +436,10 @@ export default class PokerRoom implements Party.Server {
     next.street = 'paused' as any;
     next.waitingToStart = true;
     next.toActSeat = -1;
-    // 重置每个真人的 ready：要求重新点准备（避免上局结束就自动开下局）
-    next.players = next.players.map((p) => {
-      if (p.isAI || !p.accountId || p.hasLeft || p.isSittingOut) return p;
-      return { ...p, ready: false };
-    });
+    // 注意：保留每个真人原有的 ready 状态。
+    // ready 表示"愿意继续在房间里玩"，并非"愿意打这一局"。
+    // 上局结束后人数恰好不足时，玩家不应该被迫重新点一次准备（尤其不应被瞬时断线/重连误清除）。
+    // 一旦人数重新凑齐（>=2 且都 ready），tryStartNextHand 会自然驱动下一手。
     // 房主转移：若当前 host 已离场或不在线，找第一个仍在场的真人当 host
     const currentHost = next.players[next.hostSeatIdx];
     if (!currentHost || currentHost.hasLeft || currentHost.isSittingOut || !currentHost.accountId) {
