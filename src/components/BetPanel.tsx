@@ -50,14 +50,14 @@ export default function BetPanel(props: BetPanelProps) {
     rightBtn = (
       <button onClick={() => value >= myStack ? onAllIn() : onBet(value)} className="btn-action btn-bet-style">
         <span className="text-[13px] tracking-[1.5px]">BET</span>
-        <span className="text-[15px] font-bold">${value.toLocaleString()}</span>
+        <span className="text-[15px] font-bold">{value.toLocaleString()}</span>
       </button>
     );
   } else if (scenario === 'call') {
     middleBtn = (
       <button onClick={onCall} className="btn-action btn-call-style">
         <span className="text-[13px] tracking-[1.5px]">CALL</span>
-        <span className="text-[15px] font-bold">${toCall.toLocaleString()}</span>
+        <span className="text-[15px] font-bold">{toCall.toLocaleString()}</span>
       </button>
     );
     rightBtn = (
@@ -67,7 +67,7 @@ export default function BetPanel(props: BetPanelProps) {
         disabled={maxBet < minBet}
       >
         <span className="text-[13px] tracking-[1.5px]">RAISE TO</span>
-        <span className="text-[15px] font-bold">${value.toLocaleString()}</span>
+        <span className="text-[15px] font-bold">{value.toLocaleString()}</span>
       </button>
     );
   } else {
@@ -75,7 +75,7 @@ export default function BetPanel(props: BetPanelProps) {
     middleBtn = (
       <button onClick={onAllIn} className="btn-action btn-call-style">
         <span className="text-[13px] tracking-[1.5px]">CALL</span>
-        <span className="text-[15px] font-bold">${myStack.toLocaleString()}</span>
+        <span className="text-[15px] font-bold">{myStack.toLocaleString()}</span>
         <span className="text-[9px] opacity-70 tracking-widest">ALL-IN</span>
       </button>
     );
@@ -106,7 +106,6 @@ export default function BetPanel(props: BetPanelProps) {
         {/* Stepper */}
         <div className="bet-stepper flex items-center bg-black/50 border border-white/10 rounded-lg overflow-hidden">
           <button onClick={() => setVal(value - step)} className="w-7 h-9 text-emerald-100/80 hover:bg-emerald-500/15 hover:text-emerald-400 text-base font-semibold">−</button>
-          <span className="text-emerald-100/60 px-1 text-[13px]">$</span>
           <input
             type="text"
             value={value.toLocaleString()}
@@ -150,7 +149,7 @@ export default function BetPanel(props: BetPanelProps) {
             className="absolute -top-7 -translate-x-1/2 bg-emerald-500 text-[#03100b] text-xs font-bold px-2.5 py-1 rounded whitespace-nowrap pointer-events-none shadow-[0_4px_10px_rgba(16,185,129,0.4)]"
             style={{ left: `${maxBet > minBet ? ((value - minBet) / (maxBet - minBet)) * 100 : 0}%` }}
           >
-            ${value.toLocaleString()}
+            {value.toLocaleString()}
             <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-emerald-500"></div>
           </div>
         </div>
@@ -169,7 +168,7 @@ export default function BetPanel(props: BetPanelProps) {
             >
               {q.label}
               <div className={`text-[9px] font-normal mt-0.5 ${value === q.value ? 'text-emerald-400/70' : 'text-emerald-100/40'}`}>
-                ${q.value.toLocaleString()}
+                {q.value.toLocaleString()}
               </div>
             </button>
           ))}

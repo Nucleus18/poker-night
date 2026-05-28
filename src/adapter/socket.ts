@@ -6,7 +6,7 @@
  */
 import PartySocket from 'partysocket';
 import type { GameState, ActionKind, RoomConfig, RunItCount } from '@/engine/types';
-import type { IAdapter, Listener, ConnectionStatus } from './types';
+import type { IAdapter, Listener, ConnectionStatus, ReactionListener, TomatoListener } from './types';
 
 export interface SocketAdapterParams {
   host: string;          // 例如 'localhost:1999' 或 'poker-party.xxx.partykit.dev'
@@ -18,7 +18,9 @@ export interface SocketAdapterParams {
 
 interface ServerStateMsg { type: 'state'; state: GameState; mySeatIdx: number }
 interface ServerErrorMsg { type: 'error'; message: string }
-type ServerMsg = ServerStateMsg | ServerErrorMsg;
+interface ServerReactionMsg { type: 'reaction'; seatIdx: number; reactionId: string }
+interface ServerTomatoMsg { type: 'tomato'; fromSeatIdx: number; targetSeatIdx: number }
+type ServerMsg = ServerStateMsg | ServerErrorMsg | ServerReactionMsg | ServerTomatoMsg;
 
 export class SocketAdapter implements IAdapter {
   mySeatIdx: number = -1;
@@ -29,6 +31,8 @@ export class SocketAdapter implements IAdapter {
   private socket: PartySocket;
   private soundCb?: (e: string) => void;
   private joinPayload: SocketAdapterParams;
+  private reactionListeners: Set<ReactionListener> = new Set();
+  private tomatoListeners: Set<TomatoListener> = new Set();
   private statusListeners: Set<(s: ConnectionStatus) => void> = new Set();
   private errorListeners: Set<(msg: string) => void> = new Set();
 
@@ -96,6 +100,14 @@ export class SocketAdapter implements IAdapter {
       this.errorListeners.forEach((l) => l(msg.message));
       return;
     }
+    if (msg.type === 'reaction') {
+      this.reactionListeners.forEach((fn) => fn(msg.seatIdx, msg.reactionId));
+      return;
+    }
+    if (msg.type === 'tomato') {
+      this.tomatoListeners.forEach((fn) => fn(msg.fromSeatIdx, msg.targetSeatIdx));
+      return;
+    }
     if (msg.type === 'state') {
       this.mySeatIdx = msg.mySeatIdx;
       const prev = this.state;
@@ -103,15 +115,21 @@ export class SocketAdapter implements IAdapter {
 
       // 触发音效（基于 state 变化）
       if (this.soundCb && prev) {
-        const newAction = msg.state.players[msg.state.toActSeat]?.lastAction
-          || msg.state.players.find((p) => p.lastAction && Date.now() - p.lastAction.ts < 500)?.lastAction;
-        // 简单做法：检测 street 变化触发发牌音
-        if (msg.state.street !== this.prevStreet) {
-          if (msg.state.street === 'preflop' || msg.state.street === 'flop' || msg.state.street === 'turn' || msg.state.street === 'river') {
-            this.soundCb('deal');
-          } else if (msg.state.street === 'showdown') {
-            this.soundCb('win');
-          }
+        const actionPlayer = msg.state.players.find((p, i) => {
+          const curAction = p.lastAction || p.visualAction;
+          const prevAction = prev.players[i]?.lastAction || prev.players[i]?.visualAction;
+          return curAction && curAction.ts !== prevAction?.ts;
+        });
+        const action = actionPlayer?.lastAction || actionPlayer?.visualAction;
+        if (action) {
+          if (action.kind === 'fold') this.soundCb('fold');
+          else if (action.kind === 'check') this.soundCb('check');
+          else this.soundCb('chip');
+        }
+
+        // 新一手发手牌；公共牌翻开由桌面过渡动画负责触发，避免声音早于画面。
+        if (msg.state.street !== this.prevStreet && msg.state.street === 'preflop') {
+          this.soundCb('deal');
         }
       }
       this.prevStreet = msg.state.street;
@@ -144,6 +162,24 @@ export class SocketAdapter implements IAdapter {
     this.socket.send(JSON.stringify({ type: 'rebuy' }));
   }
 
+  sendReaction(reactionId: string) {
+    this.socket.send(JSON.stringify({ type: 'reaction', reactionId }));
+  }
+
+  onReaction(fn: ReactionListener): () => void {
+    this.reactionListeners.add(fn);
+    return () => this.reactionListeners.delete(fn);
+  }
+
+  sendTomato(targetSeatIdx: number) {
+    this.socket.send(JSON.stringify({ type: 'tomato', targetSeatIdx }));
+  }
+
+  onTomato(fn: TomatoListener): () => void {
+    this.tomatoListeners.add(fn);
+    return () => this.tomatoListeners.delete(fn);
+  }
+
   leave() {
     try { this.socket.send(JSON.stringify({ type: 'leave' })); } catch { /* ignore */ }
   }
@@ -151,6 +187,8 @@ export class SocketAdapter implements IAdapter {
   destroy() {
     this.socket.close();
     this.listeners.clear();
+    this.reactionListeners.clear();
+    this.tomatoListeners.clear();
     this.statusListeners.clear();
     this.errorListeners.clear();
   }

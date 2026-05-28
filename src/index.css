@@ -165,6 +165,10 @@ body {
   60%  { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
+@keyframes winnerBadgePop {
+  0%   { transform: scale(0.82); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
 @keyframes cardFlip {
   0%   { transform: rotateY(180deg); opacity: 0.4; }
   100% { transform: rotateY(0deg);   opacity: 1; }
@@ -309,6 +313,59 @@ body {
   0% { transform: scale(0.98); }
   30% { transform: scale(1.04); }
   100% { transform: scale(1); }
+}
+.quick-reactions {
+  bottom: calc(92px + env(safe-area-inset-bottom));
+}
+.seat-reaction {
+  top: -8px;
+  animation: seatReactionPop 1.9s cubic-bezier(0.18, 0.88, 0.24, 1.12) both;
+}
+@keyframes seatReactionPop {
+  0%   { transform: translate(-50%, 0) scale(0.55); opacity: 0; }
+  12%  { opacity: 1; }
+  24%  { transform: translate(-50%, 0) scale(1.12); opacity: 1; }
+  72%  { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, 0) scale(0.96); opacity: 0; }
+}
+.seat-tomato {
+  top: -8px;
+  animation: seatTomatoHit 1.4s cubic-bezier(0.18, 0.88, 0.24, 1.12) both;
+}
+@keyframes seatTomatoHit {
+  0%   { transform: translate(-50%, 0) scale(0.92) rotate(520deg); opacity: 1; }
+  16%  { transform: translate(-50%, 0) scale(1.22) rotate(540deg); opacity: 1; }
+  34%  { transform: translate(-50%, 0) scale(0.96) rotate(532deg); opacity: 1; }
+  76%  { transform: translate(-50%, 0) scale(1) rotate(536deg); opacity: 1; }
+  100% { transform: translate(-50%, 0) scale(0.94) rotate(536deg); opacity: 0; }
+}
+.tomato-targetable .seat-avatar {
+  box-shadow: 0 0 0 3px rgba(248,113,113,0.9), 0 0 28px rgba(248,113,113,0.65), 0 6px 14px rgba(0,0,0,0.6) !important;
+}
+.tomato-throw {
+  left: var(--from-x);
+  top: var(--from-y);
+  transform: translate(-50%, -50%);
+  animation: tomatoThrow 0.82s cubic-bezier(0.18, 0.88, 0.24, 1) both;
+}
+@keyframes tomatoThrow {
+  0% {
+    left: var(--from-x);
+    top: var(--from-y);
+    transform: translate(-50%, -50%) scale(0.55) rotate(-20deg);
+    opacity: 0;
+  }
+  12% { opacity: 1; }
+  55% {
+    transform: translate(-50%, -88%) scale(1.05) rotate(240deg);
+    opacity: 1;
+  }
+  100% {
+    left: var(--to-x);
+    top: var(--to-y);
+    transform: translate(-50%, -50%) scale(0.92) rotate(520deg);
+    opacity: 1;
+  }
 }
 
 /* WINNER 头像金光呼吸（更强一档） */

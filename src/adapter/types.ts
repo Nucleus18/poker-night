@@ -9,6 +9,8 @@
 import type { GameState, ActionKind, RunItCount } from '@/engine/types';
 
 export type Listener = (state: GameState) => void;
+export type ReactionListener = (seatIdx: number, reactionId: string) => void;
+export type TomatoListener = (fromSeatIdx: number, targetSeatIdx: number) => void;
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -42,6 +44,18 @@ export interface IAdapter {
 
   /** Hero 补码 */
   rebuy(): void;
+
+  /** 发送快捷表情 */
+  sendReaction?(reactionId: string): void;
+
+  /** 订阅快捷表情事件 */
+  onReaction?(fn: ReactionListener): () => void;
+
+  /** 向目标玩家扔番茄 */
+  sendTomato?(targetSeatIdx: number): void;
+
+  /** 订阅番茄投掷事件 */
+  onTomato?(fn: TomatoListener): () => void;
 
   /** 主动离开房间（联机：通知服务端清座；本地：no-op） */
   leave?(): void;

@@ -1,5 +1,15 @@
 import type { Player } from '@/engine/types';
 
+const REACTIONS: Record<string, { alt: string; code: string }> = {
+  wink: { alt: '😉', code: '1f609' },
+  angry: { alt: '😡', code: '1f621' },
+  shake: { alt: '🙂', code: '1f642_200d_2194_fe0f' },
+  party: { alt: '🥳', code: '1f973' },
+};
+const TOMATO = { alt: '🍅', code: '1f345' };
+const reactionWebp = (code: string) => `https://fonts.gstatic.com/s/e/notoemoji/latest/${code}/512.webp`;
+const reactionGif = (code: string) => `https://fonts.gstatic.com/s/e/notoemoji/latest/${code}/512.gif`;
+
 interface SeatProps {
   player?: Player;
   isEmpty?: boolean;
@@ -16,9 +26,18 @@ interface SeatProps {
   /** 当前结算/跑马分条播放时的本次收益 */
   payoutAmount?: number;
   payoutActive?: boolean;
+  /** 快捷表情展示时间戳，用于重复点击重新触发动画 */
+  reactionTs?: number;
+  reactionId?: string;
+  /** 被番茄砸中的展示时间戳 */
+  tomatoTs?: number;
+  /** 当前是否处于番茄选人模式 */
+  tomatoTargetable?: boolean;
+  onTomatoTarget?: () => void;
 }
 
-export default function Seat({ player, isEmpty, active, showCards, revealCards, isWinner, handLabel, position, rebuyAmount, rebuysLeft, onRebuy, payoutAmount, payoutActive }: SeatProps) {
+export default function Seat({ player, isEmpty, active, showCards, revealCards, isWinner, handLabel, position, rebuyAmount, rebuysLeft, onRebuy, payoutAmount, payoutActive, reactionTs, reactionId, tomatoTs, tomatoTargetable, onTomatoTarget }: SeatProps) {
+  const reaction = REACTIONS[reactionId || 'wink'] || REACTIONS.wink;
   const style: React.CSSProperties = {
     position: 'absolute',
     left: `${position.x}%`,
@@ -60,9 +79,9 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
   const actionLabel = lastAction
     ? lastAction.kind === 'fold' ? 'FOLD'
     : lastAction.kind === 'check' ? 'CHECK'
-    : lastAction.kind === 'call' ? `CALL${lastAction.amount ? ' $' + lastAction.amount.toLocaleString() : ''}`
-    : lastAction.kind === 'bet' ? `BET $${(lastAction.amount || 0).toLocaleString()}`
-    : lastAction.kind === 'raise' ? `RAISE $${(lastAction.amount || 0).toLocaleString()}`
+    : lastAction.kind === 'call' ? `CALL${lastAction.amount ? ' ' + lastAction.amount.toLocaleString() : ''}`
+    : lastAction.kind === 'bet' ? `BET ${(lastAction.amount || 0).toLocaleString()}`
+    : lastAction.kind === 'raise' ? `RAISE ${(lastAction.amount || 0).toLocaleString()}`
     : lastAction.kind === 'allin' ? 'ALL-IN'
     : ''
     : null;
@@ -73,8 +92,28 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
     : 'border-emerald-500 text-emerald-300';
 
   return (
-    <div style={style} className={`seat-root ${player.hasFolded ? 'opacity-40 grayscale' : ''}`}>
-      <div className="flex flex-col items-center relative">
+    <div
+      style={style}
+      className={`seat-root ${tomatoTargetable ? 'tomato-targetable cursor-pointer' : ''}`}
+      onClick={tomatoTargetable ? onTomatoTarget : undefined}
+    >
+      {reactionTs && (
+        <div key={reactionTs} className="seat-reaction pointer-events-none absolute left-1/2 z-40 -translate-x-1/2">
+          <picture>
+            <source srcSet={reactionWebp(reaction.code)} type="image/webp" />
+            <img src={reactionGif(reaction.code)} alt={reaction.alt} width="88" height="88" className="h-[88px] w-[88px] object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.65)]" />
+          </picture>
+        </div>
+      )}
+      {tomatoTs && (
+        <div key={tomatoTs} className="seat-tomato pointer-events-none absolute left-1/2 z-50 -translate-x-1/2">
+          <picture>
+            <source srcSet={reactionWebp(TOMATO.code)} type="image/webp" />
+            <img src={reactionGif(TOMATO.code)} alt={TOMATO.alt} width="72" height="72" className="h-[72px] w-[72px] object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.7)]" />
+          </picture>
+        </div>
+      )}
+      <div className={`flex flex-col items-center relative ${player.hasFolded ? 'opacity-40 grayscale' : ''}`}>
         {actionLabel && (
           <div
             className={`absolute -top-9 left-1/2 -translate-x-1/2 px-2.5 py-0.5 text-[10px] font-bold tracking-widest rounded border bg-[rgba(8,18,14,0.95)] whitespace-nowrap z-30 ${actionColorCls}`}
@@ -185,7 +224,8 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
                 color: '#16110a',
                 border: '2px solid #fff',
                 boxShadow: '0 0 16px rgba(244,217,122,0.95), 0 3px 7px rgba(0,0,0,0.6)',
-                animation: 'winnerBanner 0.4s ease-out',
+                transformOrigin: 'center',
+                animation: 'winnerBadgePop 0.28s ease-out both',
               }}
             >
               WINNER
@@ -194,13 +234,13 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
         </div>
         {payoutActive && payoutAmount && payoutAmount > 0 && (
           <div className="payout-float pointer-events-none absolute left-1/2 top-[54px] z-40 -translate-x-1/2 rounded-full border border-amber-200/80 bg-black/90 px-3 py-1.5 text-[13px] font-extrabold text-amber-200 shadow-[0_0_18px_rgba(244,217,122,0.75)]">
-            +${payoutAmount.toLocaleString()}
+            +{payoutAmount.toLocaleString()}
           </div>
         )}
         <div className={`seat-tag -mt-2.5 px-2.5 py-1 text-center min-w-[96px] rounded-md border shadow-[0_4px_10px_rgba(0,0,0,0.5)] relative z-10 ${tagClass}`}>
           <div className="text-[11px] font-medium truncate max-w-[92px]">{player.name}</div>
           <div className={`text-[13px] font-semibold leading-none mt-0.5 ${player.stack === 0 ? 'text-gray-500' : 'text-amber-200'}`}>
-            ${player.stack.toLocaleString()}
+            {player.stack.toLocaleString()}
           </div>
           {player.hasFolded && (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -219,7 +259,7 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
                 color: '#fff',
                 boxShadow: '0 0 12px rgba(16,185,129,0.55), 0 2px 6px rgba(0,0,0,0.5)',
               }}
-              title={`补 $${rebuyAmount.toLocaleString()} 继续${typeof rebuysLeft === 'number' ? ` · 剩余 ${rebuysLeft} 次` : ''}`}
+              title={`补 ${rebuyAmount.toLocaleString()} 继续${typeof rebuysLeft === 'number' ? ` · 剩余 ${rebuysLeft} 次` : ''}`}
             >
               补码
             </button>

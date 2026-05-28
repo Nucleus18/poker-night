@@ -6,12 +6,14 @@ import type { GameState, ActionKind, Player, RunItCount } from '@/engine/types';
 import { applyAction, startNewHand, createInitialState, rebuyPlayer, voteRunIt } from '@/engine/engine';
 import { AI_PERSONALITIES, decideAI } from '@/ai/decide';
 import type { RoomConfig } from '@/engine/types';
-import type { IAdapter, Listener, ConnectionStatus } from './types';
+import type { IAdapter, Listener, ConnectionStatus, ReactionListener, TomatoListener } from './types';
 
 export class LocalAdapter implements IAdapter {
   readonly mySeatIdx = 0;
   private state: GameState;
   private listeners: Set<Listener> = new Set();
+  private reactionListeners: Set<ReactionListener> = new Set();
+  private tomatoListeners: Set<TomatoListener> = new Set();
   private aiTimer: number | null = null;
   private soundCb?: (event: string) => void;
 
@@ -62,9 +64,6 @@ export class LocalAdapter implements IAdapter {
     else if (kind === 'check') this.soundCb?.('check');
     this.setState(next);
 
-    if (next.street === 'showdown' && next.winners) {
-      this.soundCb?.('win');
-    }
   }
 
   /** 检查是否轮到 AI；若是则延迟思考后行动 */
@@ -101,9 +100,29 @@ export class LocalAdapter implements IAdapter {
     this.setState(rebuyPlayer(this.state, this.mySeatIdx));
   }
 
+  sendReaction(reactionId: string) {
+    this.reactionListeners.forEach((fn) => fn(this.mySeatIdx, reactionId));
+  }
+
+  onReaction(fn: ReactionListener): () => void {
+    this.reactionListeners.add(fn);
+    return () => this.reactionListeners.delete(fn);
+  }
+
+  sendTomato(targetSeatIdx: number) {
+    this.tomatoListeners.forEach((fn) => fn(this.mySeatIdx, targetSeatIdx));
+  }
+
+  onTomato(fn: TomatoListener): () => void {
+    this.tomatoListeners.add(fn);
+    return () => this.tomatoListeners.delete(fn);
+  }
+
   destroy() {
     if (this.aiTimer) clearTimeout(this.aiTimer);
     this.listeners.clear();
+    this.reactionListeners.clear();
+    this.tomatoListeners.clear();
   }
 }
 

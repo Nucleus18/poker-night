@@ -28,6 +28,32 @@ function MenuItem({ children, onClick, danger }: { children: ReactNode; onClick:
   );
 }
 
+const STREET_SETTLE_DELAY_MS = 780;
+
+type SettleView = {
+  handNumber: number;
+  community: GameState['community'];
+  bets: { seatIdx: number; amount: number }[];
+  token: string;
+};
+
+type ReactionView = { id: string; ts: number };
+type TomatoView = { fromSeatIdx: number; ts: number };
+type TomatoThrow = { id: string; fromSeatIdx: number; targetSeatIdx: number };
+
+type ReactionMeta = { id: string; alt: string; code: string };
+
+const REACTIONS: Record<string, ReactionMeta> = {
+  wink: { id: 'wink', alt: '😉', code: '1f609' },
+  angry: { id: 'angry', alt: '😡', code: '1f621' },
+  shake: { id: 'shake', alt: '🙂', code: '1f642_200d_2194_fe0f' },
+  party: { id: 'party', alt: '🥳', code: '1f973' },
+};
+const QUICK_REACTIONS = [REACTIONS.wink, REACTIONS.angry, REACTIONS.shake, REACTIONS.party];
+const TOMATO = { id: 'tomato', alt: '🍅', code: '1f345' };
+const reactionWebp = (code: string) => `https://fonts.gstatic.com/s/e/notoemoji/latest/${code}/512.webp`;
+const reactionGif = (code: string) => `https://fonts.gstatic.com/s/e/notoemoji/latest/${code}/512.gif`;
+
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user)!;
@@ -50,6 +76,18 @@ export default function RoomPage() {
   const [payoutCycle, setPayoutCycle] = useState(0);
   const [connStatus, setConnStatus] = useState<ConnectionStatus>('open');
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [settleView, setSettleView] = useState<SettleView | null>(null);
+  const [seatReactions, setSeatReactions] = useState<Record<number, ReactionView>>({});
+  const [seatTomatoes, setSeatTomatoes] = useState<Record<number, TomatoView>>({});
+  const [tomatoThrows, setTomatoThrows] = useState<TomatoThrow[]>([]);
+  const [tomatoTargeting, setTomatoTargeting] = useState(false);
+  const prevGameStateRef = useRef<GameState | null>(null);
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const soundTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const reactionTimersRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const tomatoTimersRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const tomatoThrowTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const isStreetSettling = !!settleView && state?.handNumber === settleView.handNumber;
 
   // 初始化 adapter
   useEffect(() => {
@@ -94,9 +132,47 @@ export default function RoomPage() {
 
     adapterRef.current = adapter;
     const unsub = adapter.subscribe(setState);
+    const unsubReaction = adapter.onReaction?.((seatIdx, reactionId) => {
+      const ts = Date.now();
+      setSeatReactions((cur) => ({ ...cur, [seatIdx]: { id: reactionId, ts } }));
+      if (reactionTimersRef.current[seatIdx]) clearTimeout(reactionTimersRef.current[seatIdx]);
+      reactionTimersRef.current[seatIdx] = setTimeout(() => {
+        setSeatReactions((cur) => {
+          if (cur[seatIdx]?.ts !== ts) return cur;
+          const next = { ...cur };
+          delete next[seatIdx];
+          return next;
+        });
+        delete reactionTimersRef.current[seatIdx];
+      }, 1900);
+    }) || (() => {});
+    const unsubTomato = adapter.onTomato?.((fromSeatIdx, targetSeatIdx) => {
+      const ts = Date.now();
+      const throwId = `${fromSeatIdx}-${targetSeatIdx}-${ts}`;
+      setTomatoThrows((cur) => [...cur, { id: throwId, fromSeatIdx, targetSeatIdx }]);
+
+      const hitTimer = setTimeout(() => {
+        setSeatTomatoes((cur) => ({ ...cur, [targetSeatIdx]: { fromSeatIdx, ts } }));
+        if (tomatoTimersRef.current[targetSeatIdx]) clearTimeout(tomatoTimersRef.current[targetSeatIdx]);
+        tomatoTimersRef.current[targetSeatIdx] = setTimeout(() => {
+          setSeatTomatoes((cur) => {
+            if (cur[targetSeatIdx]?.ts !== ts) return cur;
+            const next = { ...cur };
+            delete next[targetSeatIdx];
+            return next;
+          });
+          delete tomatoTimersRef.current[targetSeatIdx];
+        }, 1400);
+      }, 760);
+
+      const cleanupTimer = setTimeout(() => {
+        setTomatoThrows((cur) => cur.filter((item) => item.id !== throwId));
+      }, 900);
+      tomatoThrowTimersRef.current.push(hitTimer, cleanupTimer);
+    }) || (() => {});
     setSecondsLeft((room.config?.durationMin ?? 60) * 60);
 
-    return () => { unsub(); adapter.destroy(); };
+    return () => { unsub(); unsubReaction(); unsubTomato(); adapter.destroy(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, room?.id]);
 
@@ -136,6 +212,81 @@ export default function RoomPage() {
     }
   }, [secondsLeft, state]);
 
+  // 街道结束时先收筹码/停顿，再展示新公共牌或结算高亮
+  useEffect(() => {
+    if (!state) {
+      prevGameStateRef.current = null;
+      setSettleView(null);
+      return;
+    }
+
+    const prev = prevGameStateRef.current;
+    if (!prev) {
+      prevGameStateRef.current = state;
+      return;
+    }
+
+    const sameHand = prev.handNumber === state.handNumber;
+    const gainedCommunityCards = sameHand && state.community.length > prev.community.length;
+    const enteredShowdown = sameHand && state.street === 'showdown' && prev.street !== 'showdown';
+    const enteredRunoutVoting = sameHand && state.street === 'runout-voting' && prev.street !== 'runout-voting';
+    const shouldSettle = gainedCommunityCards || enteredShowdown || enteredRunoutVoting;
+
+    if (shouldSettle) {
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      soundTimersRef.current.forEach(clearTimeout);
+      soundTimersRef.current = [];
+
+      const token = `${state.handNumber}-${state.street}-${state.community.length}-${Date.now()}`;
+      const bets = prev.players
+        .filter((p) => p.betThisRound > 0)
+        .map((p) => ({ seatIdx: p.seatIdx, amount: p.betThisRound }));
+      const newCardCount = Math.max(0, state.community.length - prev.community.length);
+      const shouldPlayWin = state.street === 'showdown' && !!state.winners;
+
+      if (bets.length > 0) audioBus.play('collect' as any);
+      setSettleView({
+        handNumber: state.handNumber,
+        community: [...prev.community],
+        bets,
+        token,
+      });
+      settleTimerRef.current = setTimeout(() => {
+        setSettleView((cur) => (cur?.token === token ? null : cur));
+        settleTimerRef.current = null;
+
+        for (let i = 0; i < Math.min(newCardCount, 5); i++) {
+          const t = setTimeout(() => audioBus.play('flip' as any), i * 90);
+          soundTimersRef.current.push(t);
+        }
+        if (shouldPlayWin) {
+          const t = setTimeout(() => audioBus.play('win' as any), newCardCount > 0 ? Math.min(newCardCount, 5) * 90 + 180 : 0);
+          soundTimersRef.current.push(t);
+        }
+      }, STREET_SETTLE_DELAY_MS);
+    } else if (!sameHand || state.street === 'preflop' || state.street === 'idle' || state.street === 'paused') {
+      if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+      soundTimersRef.current.forEach(clearTimeout);
+      soundTimersRef.current = [];
+      settleTimerRef.current = null;
+      setSettleView(null);
+    }
+
+    prevGameStateRef.current = state;
+  }, [state]);
+
+  useEffect(() => () => {
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    soundTimersRef.current.forEach(clearTimeout);
+    soundTimersRef.current = [];
+    Object.values(reactionTimersRef.current).forEach(clearTimeout);
+    reactionTimersRef.current = {};
+    Object.values(tomatoTimersRef.current).forEach(clearTimeout);
+    tomatoTimersRef.current = {};
+    tomatoThrowTimersRef.current.forEach(clearTimeout);
+    tomatoThrowTimersRef.current = [];
+  }, []);
+
   // 监听摊牌完成 → 本地模式驱动下一手 / 限时结束触发结算
   useEffect(() => {
     if (!state) return;
@@ -164,7 +315,7 @@ export default function RoomPage() {
 
   // 结算收益动画：单次结算直接高亮赢家；跑马多次逐条 RUN、逐张公共牌翻开，再高亮赢家
   useEffect(() => {
-    if (!state || state.street !== 'showdown' || !state.winners) {
+    if (!state || state.street !== 'showdown' || !state.winners || isStreetSettling) {
       setActiveRunIndex(null);
       setActiveRunRevealCount(5);
       setActiveRunPayoutReady(false);
@@ -196,12 +347,14 @@ export default function RoomPage() {
       for (let n = 1; n <= remaining; n++) {
         timers.push(setTimeout(() => {
           setActiveRunRevealCount(baseCount + n);
+          audioBus.play('flip' as any);
         }, cursor + n * 420));
       }
 
       timers.push(setTimeout(() => {
         setActiveRunPayoutReady(true);
         setPayoutCycle((n) => n + 1);
+        audioBus.play('win' as any);
       }, cursor + remaining * 420 + 260));
 
       cursor += remaining * 420 + 1300;
@@ -214,7 +367,7 @@ export default function RoomPage() {
     }, cursor + 500));
 
     return () => timers.forEach(clearTimeout);
-  }, [state?.handNumber, state?.street, state?.winners, state?.runIt]);
+  }, [state?.handNumber, state?.street, state?.winners, state?.runIt, isStreetSettling]);
 
   // 静音切换
   useEffect(() => { audioBus.setMuted(muted); }, [muted]);
@@ -246,7 +399,7 @@ export default function RoomPage() {
   // showdown 时计算每个未弃牌玩家的牌型描述（用于头像下方大字）
   // 必须在任何早期 return 之前，遵守 React Hooks 规则
   const handLabels = useMemo(() => {
-    if (!state || state.street !== 'showdown') return {} as Record<number, string>;
+    if (!state || state.street !== 'showdown' || isStreetSettling) return {} as Record<number, string>;
     const labels: Record<number, string> = {};
     for (const p of state.players) {
       if (p.hasFolded || p.holeCards.length < 2) continue;
@@ -259,7 +412,7 @@ export default function RoomPage() {
       } catch { /* ignore */ }
     }
     return labels;
-  }, [state]);
+  }, [state, isStreetSettling]);
 
   if (!room) return <div className="h-full w-full flex items-center justify-center text-emerald-100/50">加载中...</div>;
   if (!state) {
@@ -297,11 +450,13 @@ export default function RoomPage() {
   const hero = state.players[mySeatIdx];
   const pot = state.pots.reduce((a, p) => a + p.amount, 0)
     + state.players.reduce((a, p) => a + p.betThisRound, 0);
-  const showRunItBoards = state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1;
+  const communityCards = isStreetSettling ? settleView?.community ?? state.community : state.community;
+  const showdownReady = state.street === 'showdown' && !isStreetSettling;
+  const showRunItBoards = !isStreetSettling && state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1;
   const myToCall = getToCall(state, mySeatIdx);
 
   const myScenario: ActionScenario = (() => {
-    if (hero.holeCards.length !== 2 || state.toActSeat !== mySeatIdx || state.street === 'showdown' || state.street === 'idle' || state.street === 'runout-voting') return 'wait';
+    if (isStreetSettling || hero.holeCards.length !== 2 || state.toActSeat !== mySeatIdx || state.street === 'showdown' || state.street === 'idle' || state.street === 'runout-voting') return 'wait';
     if (myToCall === 0) return 'check';
     if (myToCall >= hero.stack) return 'allin';
     return 'call';
@@ -309,7 +464,7 @@ export default function RoomPage() {
 
   const minRaiseTo = getMinRaiseTo(state, mySeatIdx);
   const activePayouts = (() => {
-    if (state.street !== 'showdown') return [] as { seatIdx: number; amount: number }[];
+    if (!showdownReady) return [] as { seatIdx: number; amount: number }[];
     if (state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1) {
       const activeRun = activeRunIndex && activeRunPayoutReady ? state.runIt.runs.find((run) => run.index === activeRunIndex) : null;
       return activeRun?.winners || [];
@@ -331,6 +486,22 @@ export default function RoomPage() {
     try { adapterRef.current?.leave?.(); } catch { /* ignore */ }
     useRoomStore.getState().leaveActiveRoom();
     navigate('/');
+  };
+
+  const reactionsDisabled = myScenario !== 'wait';
+  const sendQuickReaction = (reactionId: string) => {
+    if (reactionsDisabled) return;
+    setTomatoTargeting(false);
+    adapterRef.current?.sendReaction?.(reactionId);
+  };
+  const toggleTomatoTargeting = () => {
+    if (reactionsDisabled) return;
+    setTomatoTargeting((v) => !v);
+  };
+  const sendTomatoTo = (targetSeatIdx: number) => {
+    if (reactionsDisabled || targetSeatIdx === mySeatIdx) return;
+    adapterRef.current?.sendTomato?.(targetSeatIdx);
+    setTomatoTargeting(false);
   };
 
   return (
@@ -367,7 +538,7 @@ export default function RoomPage() {
             </div>
           )}
           <div className="stack-pill bg-white/[0.06] border border-white/10 rounded-full px-3.5 py-1.5 text-[13px]">
-            ${hero.stack.toLocaleString()}
+            {hero.stack.toLocaleString()}
           </div>
           <button onClick={() => setMuted((m) => !m)} className="mute-btn pill">{muted ? '🔇' : '🔊'}</button>
           <button
@@ -417,7 +588,7 @@ export default function RoomPage() {
           {/* 中心：底池 */}
           <div className="absolute pointer-events-none text-center" style={{ top: '30%', left: '50%', transform: 'translate(-50%, -50%)' }}>
             <div className="text-[10px] tracking-[3px] text-emerald-100/60 mb-0.5">POT TOTAL</div>
-            <div className="text-[20px] font-semibold text-white/95 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">${pot.toLocaleString()}</div>
+            <div className="text-[20px] font-semibold text-white/95 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">{pot.toLocaleString()}</div>
           </div>
 
           {/* 公共牌 / 跑马多条牌面：多次跑马时直接发在桌面上，而不是另起浮层 */}
@@ -469,7 +640,7 @@ export default function RoomPage() {
           ) : (
             <div className="community-cards absolute flex gap-2.5" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
               {[0, 1, 2, 3, 4].map((i) => {
-                const card = state.community[i];
+                const card = communityCards[i];
                 if (!card) return <PlayingCard key={`community-empty-${i}`} faceDown />;
                 return (
                   <PlayingCard
@@ -482,6 +653,29 @@ export default function RoomPage() {
               })}
             </div>
           )}
+
+          {/* 番茄飞行特效 */}
+          {tomatoThrows.map((throwItem) => {
+            const from = getSeatPosition(throwItem.fromSeatIdx, mySeatIdx);
+            const to = getSeatPosition(throwItem.targetSeatIdx, mySeatIdx);
+            return (
+              <div
+                key={throwItem.id}
+                className="tomato-throw pointer-events-none absolute z-[45]"
+                style={{
+                  ['--from-x' as any]: `${from.x}%`,
+                  ['--from-y' as any]: `${from.y}%`,
+                  ['--to-x' as any]: `${to.x}%`,
+                  ['--to-y' as any]: `${to.y}%`,
+                } as React.CSSProperties}
+              >
+                <picture>
+                  <source srcSet={reactionWebp(TOMATO.code)} type="image/webp" />
+                  <img src={reactionGif(TOMATO.code)} alt={TOMATO.alt} width="64" height="64" className="h-16 w-16 object-contain drop-shadow-[0_8px_14px_rgba(0,0,0,0.65)]" />
+                </picture>
+              </div>
+            );
+          })}
 
           {/* Dealer button */}
           {state.buttonSeat >= 0 && (() => {
@@ -502,22 +696,23 @@ export default function RoomPage() {
           {state.players.map((p) => {
             const pos = getSeatPosition(p.seatIdx, mySeatIdx);
             const isEmpty = !p.accountId || p.isSittingOut;
+            const tomatoTargetable = tomatoTargeting && !isEmpty && p.seatIdx !== mySeatIdx && !p.hasLeft;
             const payout = activePayouts.find((w) => w.seatIdx === p.seatIdx);
             return (
               <Seat
                 key={`${p.seatIdx}-${payoutCycle}`}
                 player={isEmpty ? undefined : p}
                 isEmpty={isEmpty}
-                active={state.toActSeat === p.seatIdx}
+                active={!isStreetSettling && state.toActSeat === p.seatIdx}
                 showCards={!p.isHero && p.holeCards.length > 0 && (
-                  // 还在牌局中（未弃牌）→ 显示牌背
-                  (!p.hasFolded && state.street !== 'showdown')
-                  // 摊牌或主动 reveal → 翻面显示真牌
-                  || p.revealCards
+                  // 还在牌局中（未弃牌）→ 显示牌背；收筹码过渡期间先不翻开
+                  (!p.hasFolded && !showdownReady)
+                  // 摊牌结算正式开始后再 reveal
+                  || (showdownReady && p.revealCards)
                 )}
-                revealCards={!p.isHero && p.revealCards && state.street === 'showdown'}
-                isWinner={state.street === 'showdown' && !!payout}
-                handLabel={state.street === 'showdown' && !p.hasFolded ? handLabels[p.seatIdx] : undefined}
+                revealCards={!p.isHero && p.revealCards && showdownReady}
+                isWinner={showdownReady && !!payout}
+                handLabel={showdownReady && !p.hasFolded ? handLabels[p.seatIdx] : undefined}
                 position={pos}
                 rebuyAmount={p.seatIdx === mySeatIdx && p.outOfChips && p.rebuysLeft > 0 ? (state.config?.rebuyAmount ?? 0) : undefined}
                 rebuysLeft={p.seatIdx === mySeatIdx ? p.rebuysLeft : undefined}
@@ -531,14 +726,19 @@ export default function RoomPage() {
                 } : undefined}
                 payoutAmount={payout?.amount}
                 payoutActive={!!payout}
+                reactionTs={seatReactions[p.seatIdx]?.ts}
+                reactionId={seatReactions[p.seatIdx]?.id}
+                tomatoTs={seatTomatoes[p.seatIdx]?.ts}
+                tomatoTargetable={tomatoTargetable}
+                onTomatoTarget={tomatoTargetable ? () => sendTomatoTo(p.seatIdx) : undefined}
               />
             );
           })}
 
-          {/* Bet 筹码胶囊（包括 hero 自己的）：进入下一街时 betThisRound 会清零，
-              用 visualAction 让所有刚下注的筹码统一向底池收拢并淡出。 */}
+          {/* Bet 筹码胶囊（包括 hero 自己的）：进入下一街时使用上一状态快照向底池收拢。 */}
           {state.players.map((p) => {
-            const visualBet = p.visualAction
+            const visualBet = !isStreetSettling
+              && p.visualAction
               && ['call', 'bet', 'raise', 'allin'].includes(p.visualAction.kind)
               && Date.now() - p.visualAction.ts < 1800
               ? (p.visualAction.amount || 0)
@@ -564,7 +764,30 @@ export default function RoomPage() {
                   background: 'radial-gradient(circle at 35% 30%, #ff7a7a, #c41e1e 60%, #7a0e0e)',
                   border: '2px dashed #fff',
                 }}></div>
-                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">${chipAmount.toLocaleString()}</div>
+                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">{chipAmount.toLocaleString()}</div>
+              </div>
+            );
+          })}
+          {isStreetSettling && settleView?.bets.map((bet) => {
+            const pos = getBetChipPosition(bet.seatIdx, mySeatIdx);
+            return (
+              <div
+                key={`collect-${settleView.token}-${bet.seatIdx}`}
+                className="bet-chip bet-chip-collecting absolute z-[8] flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                style={{
+                  left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -50%)',
+                  ['--collect-tx' as any]: `${50 - pos.x}%`,
+                  ['--collect-ty' as any]: `${50 - pos.y}%`,
+                  background: 'rgba(8,18,14,0.92)',
+                  border: '1px solid rgba(212,175,55,0.55)',
+                  boxShadow: '0 4px 10px rgba(0,0,0,0.6)',
+                } as React.CSSProperties}
+              >
+                <div className="bet-chip-icon w-5 h-5 rounded-full" style={{
+                  background: 'radial-gradient(circle at 35% 30%, #ff7a7a, #c41e1e 60%, #7a0e0e)',
+                  border: '2px dashed #fff',
+                }}></div>
+                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">{bet.amount.toLocaleString()}</div>
               </div>
             );
           })}
@@ -577,15 +800,15 @@ export default function RoomPage() {
                 bottom: '14%',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                opacity: hero.hasFolded && !hero.revealCards ? 0.35 : 1,
-                filter: hero.hasFolded && !hero.revealCards ? 'grayscale(0.9)' : 'none',
+                opacity: hero.hasFolded && !(showdownReady && hero.revealCards) ? 0.35 : 1,
+                filter: hero.hasFolded && !(showdownReady && hero.revealCards) ? 'grayscale(0.9)' : 'none',
                 transition: 'opacity 0.3s, filter 0.3s',
               }}
             >
               <div
                 className="relative flex"
                 style={{
-                  filter: hero.revealCards
+                  filter: showdownReady && hero.revealCards
                     ? 'drop-shadow(0 0 14px rgba(212,175,55,0.85)) drop-shadow(0 0 4px rgba(255,215,128,0.6))'
                     : 'none',
                   transition: 'filter 0.4s',
@@ -593,20 +816,7 @@ export default function RoomPage() {
               >
                 <PlayingCard key={`hero-${state.handNumber}-0-${hero.holeCards[0].rank}${hero.holeCards[0].suit}`} card={hero.holeCards[0]} rotate={-7} deal dealDelay={80} />
                 <PlayingCard key={`hero-${state.handNumber}-1-${hero.holeCards[1].rank}${hero.holeCards[1].suit}`} card={hero.holeCards[1]} rotate={7} deal dealDelay={240} />
-                {hero.revealCards && (
-                  <div
-                    className="absolute left-1/2 -top-7 -translate-x-1/2 px-2.5 py-0.5 rounded text-[10px] font-extrabold tracking-[2px] whitespace-nowrap"
-                    style={{
-                      background: 'linear-gradient(180deg, #f4d97a, #d4af37)',
-                      color: '#1a1a1a',
-                      border: '1.5px solid #fff',
-                      boxShadow: '0 0 12px rgba(212,175,55,0.8)',
-                      animation: 'winnerBanner 0.4s ease-out',
-                    }}
-                  >
-                    REVEALED
-                  </div>
-                )}
+
               </div>
               {hero.hasFolded && !hero.revealCards && (
                 <div
@@ -669,13 +879,41 @@ export default function RoomPage() {
         </div>
       </div>
 
+      {/* 快捷表情 + 番茄 */}
+      <div className="quick-reactions fixed right-5 z-[58] flex gap-2 rounded-2xl border border-white/10 bg-black/45 p-2 shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md">
+        <button
+          type="button"
+          onClick={toggleTomatoTargeting}
+          disabled={reactionsDisabled}
+          className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all active:scale-95 ${tomatoTargeting ? 'border-red-300/80 bg-red-400/25 shadow-[0_0_16px_rgba(248,113,113,0.45)]' : 'border-white/10 bg-white/[0.06]'} ${reactionsDisabled ? 'cursor-not-allowed opacity-35 grayscale' : 'hover:-translate-y-0.5 hover:border-red-300/70 hover:bg-red-400/15'}`}
+          title={reactionsDisabled ? '行动中先完成下注操作' : tomatoTargeting ? '选择要砸的玩家' : '扔番茄'}
+          aria-label="扔番茄"
+        >
+          <span className="text-[26px] leading-none" aria-hidden="true">{TOMATO.alt}</span>
+        </button>
+        <div className="mx-0.5 h-8 w-px self-center bg-white/10" />
+        {QUICK_REACTIONS.map((reaction, i) => (
+          <button
+            key={`${reaction.id}-${i}`}
+            type="button"
+            onClick={() => sendQuickReaction(reaction.id)}
+            disabled={reactionsDisabled}
+            className={`flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] transition-all active:scale-95 ${reactionsDisabled ? 'cursor-not-allowed opacity-35 grayscale' : 'hover:-translate-y-0.5 hover:border-emerald-300/55 hover:bg-emerald-400/15'}`}
+            title={reactionsDisabled ? '行动中先完成下注操作' : '发送表情'}
+            aria-label={`发送表情 ${reaction.alt}`}
+          >
+            <span className="text-[26px] leading-none" aria-hidden="true">{reaction.alt}</span>
+          </button>
+        ))}
+      </div>
+
       {/* 当前最佳牌型（实时） */}
       {hero.holeCards.length === 2 && !hero.hasFolded && (
-        <BestHand holeCards={hero.holeCards} community={state.community} />
+        <BestHand holeCards={hero.holeCards} community={communityCards} />
       )}
 
       {/* 跑马协商：移动端用底部卡片，避免挡住桌面关键区域 */}
-      {state.street === 'runout-voting' && state.runIt?.status === 'voting' && (() => {
+      {!isStreetSettling && state.street === 'runout-voting' && state.runIt?.status === 'voting' && (() => {
         const myVote = state.runIt?.votes?.[mySeatIdx];
         const canVote = state.runIt?.eligibleSeats.includes(mySeatIdx);
         const votedCount = Object.keys(state.runIt?.votes || {}).length;

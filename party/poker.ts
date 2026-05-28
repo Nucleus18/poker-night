@@ -32,10 +32,14 @@ type ClientMsg =
   | { type: 'rebuy' }
   | { type: 'runItVote'; count: RunItCount }
   | { type: 'toggleShow' }
+  | { type: 'reaction'; reactionId: string }
+  | { type: 'tomato'; targetSeatIdx: number }
   | { type: 'leave' };
 
 type ServerMsg =
   | { type: 'state'; state: GameState; mySeatIdx: number }
+  | { type: 'reaction'; seatIdx: number; reactionId: string }
+  | { type: 'tomato'; fromSeatIdx: number; targetSeatIdx: number }
   | { type: 'error'; message: string };
 
 const PRESET_AI_NAMES = ['Felix_Aces', 'TheArchitect', 'CaptainM', 'Vegas_Vixen', 'AceWolf', 'PoolShark', 'BluffKing', 'RiverRat'];
@@ -194,6 +198,16 @@ export default class PokerRoom implements Party.Server {
         next.players[seat] = { ...p, showCardsEnabled: !p.showCardsEnabled };
         this.state = next;
         this.broadcastState();
+        break;
+      }
+      case 'reaction': {
+        this.broadcastReaction(seat, msg.reactionId || 'wink');
+        break;
+      }
+      case 'tomato': {
+        if (this.isValidTomatoTarget(msg.targetSeatIdx)) {
+          this.broadcastTomato(seat, msg.targetSeatIdx);
+        }
         break;
       }
       case 'leave': {
@@ -530,6 +544,26 @@ export default class PokerRoom implements Party.Server {
       const seat = this.connToSeat.get(conn.id);
       if (seat === undefined) continue;
       this.send(conn, { type: 'state', state: this.viewFor(seat), mySeatIdx: seat });
+    }
+  }
+
+  private broadcastReaction(seatIdx: number, reactionId: string) {
+    for (const conn of this.room.getConnections()) {
+      if (!this.connToSeat.has(conn.id)) continue;
+      this.send(conn, { type: 'reaction', seatIdx, reactionId });
+    }
+  }
+
+  private isValidTomatoTarget(targetSeatIdx: number) {
+    if (!this.state) return false;
+    const p = this.state.players[targetSeatIdx];
+    return !!p && !!p.accountId && !p.isSittingOut && !p.hasLeft;
+  }
+
+  private broadcastTomato(fromSeatIdx: number, targetSeatIdx: number) {
+    for (const conn of this.room.getConnections()) {
+      if (!this.connToSeat.has(conn.id)) continue;
+      this.send(conn, { type: 'tomato', fromSeatIdx, targetSeatIdx });
     }
   }
 
