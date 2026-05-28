@@ -171,6 +171,11 @@ export default class PokerRoom implements Party.Server {
       case 'rebuy': {
         this.state = rebuyPlayer(this.state, seat);
         this.broadcastState();
+        // 已开局后没有"重新准备/开始"流程：如果当前因人数不足或破产处于等待，
+        // 补码成功后立即尝试自动续下一手。
+        if (this.state.handNumber > 0 && (this.state.street === 'idle' || (this.state.street as any) === 'paused')) {
+          this.tryStartNextHand();
+        }
         break;
       }
       case 'toggleShow': {

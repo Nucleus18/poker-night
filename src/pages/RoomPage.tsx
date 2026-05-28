@@ -41,7 +41,6 @@ export default function RoomPage() {
   const [muted, setMuted] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [rebuyOffered, setRebuyOffered] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
   const [showStandings, setShowStandings] = useState(false);
   const [showRoomMenu, setShowRoomMenu] = useState(false);
@@ -145,14 +144,10 @@ export default function RoomPage() {
           setShowLeaderboard(true);
           return;
         }
-        // 本地模式由客户端驱动下一手；联机模式由 PartyKit 服务端驱动，避免重复 startHand 导致局数虚高
+        // 本地模式：自动开下一手（hero 即使破产也允许 startNewHand 推进，破产玩家不会被发牌，
+        // 但 UI 上头像旁的"补码"按钮一直可点，玩家任意时机点击即可补码继续）。
+        // 联机模式由 PartyKit 服务端驱动。
         if (room?.mode === 'local') {
-          const me = state.players[adapterRef.current?.mySeatIdx ?? 0];
-          // 本地模式自己破产 → 弹补码窗（不直接 startHand，等用户选择）
-          if (me?.outOfChips && me.rebuysLeft > 0) {
-            setRebuyOffered(true);
-            return;
-          }
           adapterRef.current?.startHand();
         }
       }, showcaseDuration);
@@ -160,25 +155,32 @@ export default function RoomPage() {
     }
   }, [state]);
 
-  // 联机模式下：自己破产且还有补码次数 → 弹补码窗。
-  // 单独 effect 监听 hero 状态，避免依赖 showdown 时机（服务端推 paused 后，
-  // showdown effect 的 setTimeout 会被清掉，那条路径无法触发弹窗）。
-  useEffect(() => {
-    if (!state) return;
-    if (room?.mode !== 'online') return;
-    if (showLeaderboard) return;
-    const me = state.players[adapterRef.current?.mySeatIdx ?? 0];
-    if (me?.outOfChips && me.rebuysLeft > 0 && !rebuyOffered) {
-      // 仅在牌局非进行中（idle / paused / showdown）时弹，避免覆盖正在打的本手 UI
-      const s = state.street as string;
-      if (s === 'idle' || s === 'paused' || s === 'showdown') {
-        setRebuyOffered(true);
-      }
-    }
-  }, [state, room?.mode, showLeaderboard, rebuyOffered]);
-
   // 静音切换
   useEffect(() => { audioBus.setMuted(muted); }, [muted]);
+
+  // 二级菜单：点击菜单外部 / 按 Esc 自动关闭（移动端没有显式关闭键时也能退出）
+  useEffect(() => {
+    if (!showRoomMenu) return;
+    const handleDocClick = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // 点到菜单本身或触发按钮 → 不关；点到其他位置 → 关
+      if (target.closest('.room-menu-popover') || target.closest('.mobile-menu-trigger')) return;
+      setShowRoomMenu(false);
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowRoomMenu(false);
+    };
+    // 用 mousedown / touchstart：比 click 更早触发，避免被 React 合成事件抢先 toggle
+    document.addEventListener('mousedown', handleDocClick);
+    document.addEventListener('touchstart', handleDocClick, { passive: true });
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleDocClick);
+      document.removeEventListener('touchstart', handleDocClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [showRoomMenu]);
 
   // showdown 时计算每个未弃牌玩家的牌型描述（用于头像下方大字）
   // 必须在任何早期 return 之前，遵守 React Hooks 规则
@@ -311,9 +313,19 @@ export default function RoomPage() {
           </button>
           {showRoomMenu && (
             <div className="room-menu-popover absolute right-0 top-[calc(100%+8px)] w-[220px] rounded-xl border border-emerald-500/30 bg-[rgba(8,18,14,0.96)] shadow-[0_12px_30px_rgba(0,0,0,0.65)] backdrop-blur-md p-2 z-[80]">
-              <div className="px-3 py-2 border-b border-white/5 mb-1">
-                <div className="text-[10px] tracking-[2px] text-emerald-300/70">房间菜单</div>
-                <div className="text-xs text-emerald-100/60 mt-1">{room.mode === 'online' ? `房间码 ${room.id}` : '本地房间'}</div>
+              <div className="px-3 py-2 border-b border-white/5 mb-1 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-[10px] tracking-[2px] text-emerald-300/70">房间菜单</div>
+                  <div className="text-xs text-emerald-100/60 mt-1 truncate">{room.mode === 'online' ? `房间码 ${room.id}` : '本地房间'}</div>
+                </div>
+                <button
+                  onClick={() => setShowRoomMenu(false)}
+                  className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-emerald-100/70 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+                  aria-label="关闭菜单"
+                  title="关闭"
+                >
+                  ✕
+                </button>
               </div>
               {room.mode === 'online' && <MenuItem onClick={() => { copyRoomLink(); setShowRoomMenu(false); }}>复制房间链接</MenuItem>}
               <MenuItem onClick={() => { setShowStandings(true); setShowRoomMenu(false); }}>战绩排行</MenuItem>
@@ -386,6 +398,12 @@ export default function RoomPage() {
                 isWinner={state.street === 'showdown' && winnerSet.has(p.seatIdx)}
                 handLabel={state.street === 'showdown' && !p.hasFolded ? handLabels[p.seatIdx] : undefined}
                 position={pos}
+                rebuyAmount={p.seatIdx === mySeatIdx && p.outOfChips && p.rebuysLeft > 0 ? (state.config?.rebuyAmount ?? 0) : undefined}
+                rebuysLeft={p.seatIdx === mySeatIdx ? p.rebuysLeft : undefined}
+                onRebuy={p.seatIdx === mySeatIdx && p.outOfChips && p.rebuysLeft > 0 ? () => {
+                  adapterRef.current?.rebuy();
+                  if (room.mode === 'local') adapterRef.current?.startHand();
+                } : undefined}
               />
             );
           })}
@@ -756,31 +774,6 @@ export default function RoomPage() {
       {state.endingAfterHand && !showLeaderboard && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 bg-amber-900/80 border border-amber-400 rounded-lg px-4 py-2 text-sm z-50">
           ⏰ 限时已到，本手结束后结算
-        </div>
-      )}
-
-      {/* 补码弹窗 */}
-      {rebuyOffered && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4">
-          <div className="bg-black/80 border border-emerald-500 rounded-2xl p-6 w-full max-w-[360px] backdrop-blur-md">
-            <h3 className="text-lg font-semibold mb-2">筹码用完了</h3>
-            <p className="text-sm text-emerald-100/70 mb-4">补 ${(state.config?.rebuyAmount ?? 0).toLocaleString()} 继续？剩余补码次数：{hero.rebuysLeft}</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  adapterRef.current?.rebuy();
-                  setRebuyOffered(false);
-                  // 仅本地模式由客户端驱动开下一手；联机模式补码后由服务端 tryStartNextHand 接续
-                  if (room?.mode === 'local') adapterRef.current?.startHand();
-                }}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-2 rounded font-semibold"
-              >补码</button>
-              <button
-                onClick={() => { setRebuyOffered(false); setShowLeaderboard(true); }}
-                className="flex-1 bg-red-700 hover:bg-red-600 py-2 rounded font-semibold"
-              >离场</button>
-            </div>
-          </div>
         </div>
       )}
 

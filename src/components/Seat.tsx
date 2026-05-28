@@ -9,9 +9,13 @@ interface SeatProps {
   isWinner?: boolean;           // 是否是本手胜者（贴 WINNER 徽章）
   handLabel?: string;           // 本手摊牌时的牌型描述（在头像下方大字显示）
   position: { x: number; y: number };
+  /** 仅在 hero 自己破产 (stack === 0) 且仍可补码时由父级传入；点击后立即补码 */
+  rebuyAmount?: number;         // > 0 时显示补码按钮
+  rebuysLeft?: number;          // 剩余补码次数（用于 tooltip / 文案）
+  onRebuy?: () => void;
 }
 
-export default function Seat({ player, isEmpty, active, showCards, revealCards, isWinner, handLabel, position }: SeatProps) {
+export default function Seat({ player, isEmpty, active, showCards, revealCards, isWinner, handLabel, position, rebuyAmount, rebuysLeft, onRebuy }: SeatProps) {
   const style: React.CSSProperties = {
     position: 'absolute',
     left: `${position.x}%`,
@@ -187,6 +191,23 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="bg-black/70 text-gray-400 text-[9px] tracking-widest px-1.5 py-0.5 rounded">FOLDED</span>
             </div>
+          )}
+          {/* 补码按钮：仅当父级传入 rebuyAmount/onRebuy 时渲染（即 hero 自己破产且仍有补码次数）
+              位置：紧贴 seat-tag 右侧。点击后立即补码继续打。 */}
+          {rebuyAmount && rebuyAmount > 0 && onRebuy && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRebuy(); }}
+              className="rebuy-seat-btn absolute left-full top-1/2 -translate-y-1/2 ml-1.5 px-2 py-1 rounded-md text-[11px] font-bold tracking-wide whitespace-nowrap z-20 transition-all hover:brightness-110 active:scale-95"
+              style={{
+                background: 'linear-gradient(180deg, #10b981, #0e8e6c)',
+                border: '1px solid #34d399',
+                color: '#fff',
+                boxShadow: '0 0 12px rgba(16,185,129,0.55), 0 2px 6px rgba(0,0,0,0.5)',
+              }}
+              title={`补 $${rebuyAmount.toLocaleString()} 继续${typeof rebuysLeft === 'number' ? ` · 剩余 ${rebuysLeft} 次` : ''}`}
+            >
+              补码
+            </button>
           )}
         </div>
 
