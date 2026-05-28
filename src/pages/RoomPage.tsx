@@ -148,7 +148,37 @@ export default function RoomPage() {
     return new Set((state?.winners || []).map((w) => w.seatIdx));
   }, [state?.winners]);
 
-  if (!room || !state) return <div className="h-full w-full flex items-center justify-center text-emerald-100/50">加载中...</div>;
+  if (!room) return <div className="h-full w-full flex items-center justify-center text-emerald-100/50">加载中...</div>;
+  if (!state) {
+    const isOnline = room.mode === 'online';
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center gap-4 text-emerald-100/70 px-8">
+        <div className="text-base">
+          {isOnline
+            ? (connStatus === 'connecting' ? '正在连接服务器...' :
+               connStatus === 'reconnecting' ? '连接中断，正在重连...' :
+               connStatus === 'open' ? '已连接，等待房间初始化...' :
+               '未连接到服务器')
+            : '正在初始化牌桌...'}
+        </div>
+        {isOnline && connStatus !== 'open' && (
+          <div className="text-xs text-emerald-100/40 max-w-md text-center leading-relaxed bg-black/30 border border-amber-500/30 rounded-lg p-4">
+            <div className="text-amber-300 font-semibold mb-1">联机服务器没起？</div>
+            <div className="font-mono text-[11px]">npm run dev:all</div>
+            <div className="mt-2 text-emerald-100/40">
+              这条命令会同时启动前端 + PartyKit 服务端 (localhost:1999)。
+              <br />
+              如果你只跑了 <code className="font-mono">npm run dev</code>，请回终端补一条 <code className="font-mono">npm run party</code>。
+            </div>
+          </div>
+        )}
+        {errMsg && (
+          <div className="text-red-400 text-xs">服务器错误：{errMsg}</div>
+        )}
+        <button onClick={() => navigate('/')} className="pill mt-2">返回大厅</button>
+      </div>
+    );
+  }
 
   const mySeatIdx = adapterRef.current?.mySeatIdx ?? 0;
   const hero = state.players[mySeatIdx];
