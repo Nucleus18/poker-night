@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>桌面效果预览 v4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cinzel:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --neon: #10b981;
+    --neon-dim: #0e8e6c;
+    --gold: #d4af37;
+    --red: #d83a3a;
+    --bg-deep: #03100b;
+    --felt-hi: #1f7a5c;
+    --felt-mid: #0e4a36;
+    --felt-lo: #052218;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: radial-gradient(ellipse at center, #0a2a1f 0%, #030d09 70%, #000 100%);
+    font-family: 'Inter', sans-serif;
+    color: #fff;
+    overflow: hidden;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+
+  /* 顶栏 */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0));
+    z-index: 50;
+  }
+  .brand { font-family: 'Cinzel', serif; font-size: 17px; letter-spacing: 4px; color: #d8e8df; }
+  .pill {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 18px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: #cfe6db;
+    cursor: pointer;
+  }
+  .topbar-center { display:flex; flex-direction:column; align-items:center; gap:2px; }
+  .topbar-center .table-name { font-size: 14px; }
+  .topbar-center .underline { width: 28px; height: 2px; background: var(--neon); border-radius: 2px; }
+  .topbar-right { display: flex; gap: 10px; align-items: center; }
+  .balance { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; padding: 6px 14px; font-size: 13px; }
+
+  /* ================= 桌面（赛道形） ================= */
+  .stage {
+    position: relative;
+    width: min(1200px, 94vw);
+    height: min(680px, 80vh);
+    margin-top: 20px;
+  }
+  .table-shadow { position: absolute; inset: 6% 4% -2% 4%; border-radius: 9999px; background: radial-gradient(ellipse at center, rgba(0,0,0,0.7), rgba(0,0,0,0.3) 50%, transparent 75%); filter: blur(20px); }
+  .rail { position: absolute; inset: 6% 5%; border-radius: 9999px; background: linear-gradient(180deg, #1a1a1a 0%, #2a2a2a 30%, #1a1a1a 50%, #050505 100%); box-shadow: inset 0 4px 8px rgba(255,255,255,0.06), inset 0 -4px 12px rgba(0,0,0,0.6), 0 20px 50px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04); }
+  .rail-highlight { position: absolute; inset: calc(6% + 2px) calc(5% + 2px); border-radius: 9999px; background: linear-gradient(180deg, rgba(255,255,255,0.1), transparent 30%, transparent 70%, rgba(255,255,255,0.04)); pointer-events: none; }
+  .rail-inner-edge { position: absolute; inset: calc(6% + 22px) calc(5% + 22px); border-radius: 9999px; box-shadow: 0 0 0 1px rgba(0,0,0,0.8), 0 0 0 2px rgba(255,255,255,0.04); }
+  .felt { position: absolute; inset: calc(6% + 24px) calc(5% + 24px); border-radius: 9999px; background: radial-gradient(ellipse 65% 90% at 50% 40%, var(--felt-hi), var(--felt-mid) 55%, var(--felt-lo)); box-shadow: inset 0 8px 30px rgba(0,0,0,0.6), inset 0 -4px 20px rgba(0,0,0,0.5); overflow: hidden; }
+  .felt::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(255,255,255,0.015) 0.5px, transparent 1px),
+      radial-gradient(circle at 70% 60%, rgba(0,0,0,0.04) 0.5px, transparent 1px),
+      radial-gradient(circle at 40% 80%, rgba(255,255,255,0.01) 0.5px, transparent 1px);
+    background-size: 5px 5px, 7px 7px, 11px 11px;
+    pointer-events: none;
+  }
+  .felt-glow { position: absolute; inset: calc(6% + 30px) calc(5% + 30px); border-radius: 9999px; border: 1.5px solid rgba(16, 185, 129, 0.55); box-shadow: 0 0 24px rgba(16, 185, 129, 0.18), inset 0 0 24px rgba(16, 185, 129, 0.1); pointer-events: none; }
+  .felt-glow-inner { position: absolute; inset: calc(6% + 50px) calc(5% + 50px); border-radius: 9999px; border: 0.8px solid rgba(16, 185, 129, 0.25); pointer-events: none; }
+
+  /* 中心 */
+  .center {
+    position: absolute;
+    top: 32%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+  }
+  .pot-label { font-size: 11px; letter-spacing: 3px; color: rgba(207, 230, 219, 0.7); margin-bottom: 4px; }
+  .pot-amount { font-size: 30px; font-weight: 600; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+  .community {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex; gap: 10px;
+  }
+
+  /* 扑克牌 */
+  .card {
+    width: 60px; height: 86px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #fff, #f0f0f0);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.6), 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.8);
+    position: relative;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 5px 4px;
+    border: 0.5px solid rgba(0,0,0,0.15);
+  }
+  .card.glow { box-shadow: 0 6px 14px rgba(0,0,0,0.6), 0 0 16px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255,255,255,0.8); }
+  .card .rank { font-family: 'Cinzel', serif; font-size: 21px; font-weight: 600; line-height: 1; align-self: flex-start; margin-left: 2px; }
+  .card .suit-big { font-size: 32px; line-height: 1; margin-top: 6px; }
+  .card.red .rank, .card.red .suit-big { color: #d12d2d; }
+  .card.black .rank, .card.black .suit-big { color: #1a1a1a; }
+  .card.back { background: linear-gradient(135deg, #1e3a5f, #0c1a2e); border: 1px solid rgba(255,255,255,0.05); }
+  .card.back::after { content: ''; position: absolute; inset: 4px; border-radius: 4px; border: 1px solid rgba(74, 122, 184, 0.4); background: repeating-linear-gradient(45deg, rgba(74, 122, 184, 0.15) 0 2px, transparent 2px 5px); }
+
+  /* ================= 玩家位（重设计：圆头像 + 下方标签） ================= */
+  .seat {
+    position: absolute;
+    width: 96px;
+    transform: translate(-50%, -50%);
+    z-index: 4;
+  }
+  .seat-inner {
+    display: flex; flex-direction: column; align-items: center;
+    position: relative;
+  }
+  .avatar-ring {
+    position: relative;
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    padding: 3px;
+    background: linear-gradient(180deg, #2a2a2a, #0a0a0a);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .avatar {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600; font-size: 22px;
+    color: #fff;
+    background: linear-gradient(135deg, #3a4a5e, #1a2638);
+    border: 1.5px solid rgba(255,255,255,0.08);
+  }
+  .timer-ring {
+    position: absolute; inset: 0;
+    transform: rotate(-90deg);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .timer-ring circle { fill: none; stroke-width: 3; }
+  .timer-ring .bg { stroke: rgba(0,0,0,0.4); }
+  .timer-ring .fg {
+    stroke: var(--neon);
+    stroke-linecap: round;
+    stroke-dasharray: 226;
+    stroke-dashoffset: 0;
+    filter: drop-shadow(0 0 4px var(--neon));
+    animation: timer 12s linear forwards;
+  }
+  @keyframes timer { to { stroke-dashoffset: 226; } }
+
+  .name-tag {
+    margin-top: -10px;
+    background: linear-gradient(180deg, #1e1e1e, #0a0a0a);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 6px 10px 4px;
+    text-align: center;
+    min-width: 96px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .name-tag .name {
+    font-size: 11px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 92px;
+  }
+  .name-tag .stack {
+    font-size: 13px; font-weight: 600;
+    color: #f4d97a;
+    margin-top: 2px;
+    line-height: 1;
+  }
+  .name-tag .stack.zero { color: #888; }
+
+  /* === 状态：当前行动 === */
+  .seat.active .avatar-ring {
+    box-shadow:
+      0 0 0 2px var(--neon),
+      0 0 20px rgba(16, 185, 129, 0.7),
+      0 6px 14px rgba(0,0,0,0.6);
+    animation: breathe 2s ease-in-out infinite;
+  }
+  .seat.active .timer-ring { opacity: 1; }
+  .seat.active .name-tag {
+    border-color: var(--neon);
+    background: linear-gradient(180deg, #0e2820, #051a13);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.4), 0 4px 10px rgba(0,0,0,0.5);
+  }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 0 2px var(--neon), 0 0 18px rgba(16, 185, 129, 0.6), 0 6px 14px rgba(0,0,0,0.6); }
+    50%      { box-shadow: 0 0 0 2px var(--neon), 0 0 32px rgba(16, 185, 129, 0.95), 0 6px 14px rgba(0,0,0,0.6); }
+  }
+
+  /* === 状态：弃牌 === */
+  .seat.folded { opacity: 0.42; filter: grayscale(0.85); }
+  .seat.folded .name-tag::after {
+    content: 'FOLDED';
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.7);
+    color: #aaa; font-size: 9px; letter-spacing: 1px;
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .seat.folded .name-tag .stack { opacity: 0.5; }
+
+  /* === 状态：行动标签（弹窗式，业界做法：动作完成后短暂悬浮于头像上方） === */
+  .action-bubble {
+    position: absolute;
+    top: -22px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(8, 18, 14, 0.95);
+    border: 1px solid var(--neon);
+    color: var(--neon);
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  }
+  .action-bubble.fold { border-color: var(--red); color: #ff8585; box-shadow: 0 0 10px rgba(216, 58, 58, 0.5); }
+  .action-bubble.raise { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 10px rgba(212, 175, 55, 0.5); }
+
+  /* === BET 筹码（业界做法：从玩家位向桌中心方向投出） === */
+  .bet-chip {
+    position: absolute;
+    z-index: 3;
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px 4px 6px;
+    background: rgba(8, 18, 14, 0.85);
+    border: 1px solid rgba(212, 175, 55, 0.5);
+    border-radius: 18px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+  }
+  .bet-chip .chip-icon {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, #ff7a7a, #c41e1e 60%, #7a0e0e);
+    border: 2px dashed #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    flex-shrink: 0;
+  }
+  .bet-chip .amt { font-size: 12px; font-weight: 700; color: #f4d97a; }
+
+  /* Dealer Button */
+  .dealer-btn {
+    position: absolute;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff, #d8d8d8 60%, #888);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.6), inset 0 -2px 3px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    color: #1a1a1a;
+    z-index: 5;
+  }
+
+  /* 我的手牌 */
+  .hero-hand {
+    position: absolute;
+    bottom: 12%; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 0;
+    z-index: 6;
+  }
+  .hero-hand .card:first-child { transform: rotate(-7deg) translateX(8px); }
+  .hero-hand .card:last-child  { transform: rotate(7deg)  translateX(-8px); }
+
+  /* ================= 底部操作区 ================= */
+  .actions {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 14px 24px 16px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.85));
+    z-index: 40;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+
+  /* 下注面板 */
+  .bet-panel {
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(8, 18, 14, 0.85);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: 16px;
+    padding: 10px 16px;
+    backdrop-filter: blur(8px);
+    transition: opacity 0.2s;
+  }
+  .bet-panel.hidden { opacity: 0.35; pointer-events: none; }
+  .bet-stepper {
+    display: flex; align-items: center;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .bet-stepper button { width: 30px; height: 36px; background: transparent; border: none; color: #cfe6db; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .bet-stepper button:hover { background: rgba(16, 185, 129, 0.15); color: var(--neon); }
+  .bet-stepper .amount { width: 110px; background: transparent; border: none; color: #fff; text-align: center; font-family: 'Inter', sans-serif; font-size: 16px; font-weight: 600; padding: 0 4px; }
+  .bet-stepper .amount:focus { outline: none; }
+  .bet-stepper .currency { color: #9fdcc2; padding: 0 6px; font-size: 13px; }
+  .slider-wrap { position: relative; flex: 1; min-width: 280px; max-width: 420px; height: 36px; display: flex; align-items: center; }
+  .slider-track { position: absolute; left: 0; right: 0; top: 50%; height: 4px; background: rgba(255,255,255,0.12); border-radius: 2px; transform: translateY(-50%); pointer-events: none; }
+  .slider-fill { position: absolute; left: 0; top: 50%; height: 4px; background: linear-gradient(90deg, var(--neon-dim), var(--neon)); border-radius: 2px; transform: translateY(-50%); pointer-events: none; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+  .slider-input { position: relative; width: 100%; -webkit-appearance: none; appearance: none; background: transparent; height: 36px; margin: 0; z-index: 2; }
+  .slider-input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(180deg, #fff, #d4d4d4); border: 2px solid var(--neon); box-shadow: 0 0 12px rgba(16, 185, 129, 0.8), 0 2px 4px rgba(0,0,0,0.5); cursor: grab; }
+  .slider-bubble { position: absolute; bottom: 100%; transform: translate(-50%, -2px); background: var(--neon); color: #03100b; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 6px; white-space: nowrap; pointer-events: none; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4); }
+  .slider-bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--neon); }
+
+  .quick-bets { display: flex; gap: 6px; }
+  .quick-bet { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 600; color: #cfe6db; cursor: pointer; letter-spacing: 0.5px; transition: all 0.15s; min-width: 60px; }
+  .quick-bet:hover { border-color: var(--neon); color: var(--neon); background: rgba(16, 185, 129, 0.08); }
+  .quick-bet.active { border-color: var(--neon); background: rgba(16, 185, 129, 0.15); color: var(--neon); box-shadow: inset 0 0 8px rgba(16, 185, 129, 0.2); }
+  .quick-bet small { display:block; font-size: 9px; color: #6a8a7d; font-weight: 400; margin-top: 2px; }
+  .quick-bet.active small { color: var(--neon); opacity: 0.7; }
+
+  /* 主操作按钮（业界设计：3 槽，文字根据状态切换） */
+  .action-btns { display: flex; gap: 12px; }
+  .btn {
+    border: none; border-radius: 10px;
+    padding: 10px 20px;
+    font-weight: 700; letter-spacing: 1px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.15s;
+    min-width: 150px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn .lbl { font-size: 13px; line-height: 1.1; letter-spacing: 1.5px; }
+  .btn .val { font-size: 15px; line-height: 1.1; font-weight: 700; }
+  .btn .sub { font-size: 9px; opacity: 0.7; letter-spacing: 1px; }
+  .btn-fold { background: linear-gradient(180deg, #b22020, #7a1414); color: #fff; box-shadow: 0 4px 0 #4a0808, 0 6px 12px rgba(0,0,0,0.4); }
+  .btn-call { background: rgba(10,20,15,0.6); color: var(--neon); border: 1.5px solid var(--neon); box-shadow: 0 0 16px rgba(16, 185, 129, 0.4), inset 0 0 8px rgba(16, 185, 129, 0.15); }
+  .btn-bet { background: linear-gradient(180deg, #d4af37, #8a6f1a); color: #1a1a1a; box-shadow: 0 4px 0 #4a3808, 0 6px 12px rgba(0,0,0,0.4); }
+  .btn[disabled] { opacity: 0.35; cursor: not-allowed; filter: grayscale(0.6); }
+
+  /* 左下浮 */
+  .floats { position: fixed; left: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 30; }
+  .float-btn { width: 36px; height: 36px; border-radius: 50%; background: rgba(20,20,20,0.6); border: 1px solid rgba(255,255,255,0.1); color: #cfe6db; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  .best-hand-card { position: fixed; left: 64px; bottom: 16px; background: linear-gradient(180deg, rgba(20,30,25,0.85), rgba(10,20,15,0.85)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 8px 14px; min-width: 180px; z-index: 35; }
+  .best-hand-card .lbl { font-size: 10px; letter-spacing: 1px; color: #9fdcc2; text-align:center; }
+  .best-hand-card .mini-cards { display:flex; gap: 3px; justify-content:center; margin: 4px 0; }
+  .best-hand-card .mini { width: 22px; height: 30px; border-radius: 3px; background: #fff; display: flex; flex-direction:column; align-items:center; padding: 2px; font-family: 'Cinzel', serif; font-size: 10px; line-height: 1; }
+  .best-hand-card .mini.red { color: #d12d2d; }
+  .best-hand-card .mini.black { color: #1a1a1a; }
+  .best-hand-card .mini .s { font-size: 11px; margin-top: 1px; }
+  .best-hand-card .desc { font-size: 11px; text-align: center; }
+
+  /* 演示控制盘 */
+  .demo-controls {
+    position: fixed; right: 16px; top: 70px;
+    background: rgba(0,0,0,0.75);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 12px;
+    padding: 12px;
+    z-index: 60;
+    font-size: 12px;
+    backdrop-filter: blur(10px);
+    width: 200px;
+  }
+  .demo-controls h4 { color: var(--neon); margin-bottom: 8px; font-size: 11px; letter-spacing: 1px; }
+  .demo-controls .group { margin-bottom: 10px; }
+  .demo-controls .group-label { font-size: 10px; color: #6a8a7d; margin-bottom: 4px; letter-spacing: 1px; }
+  .demo-controls button { display: block; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 6px 10px; margin: 3px 0; border-radius: 6px; cursor: pointer; font-size: 11px; text-align: left; }
+  .demo-controls button:hover { background: rgba(16, 185, 129, 0.2); border-color: var(--neon); }
+  .demo-controls button.on { background: rgba(16, 185, 129, 0.25); border-color: var(--neon); color: var(--neon); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div style="display:flex; gap:12px; align-items:center;">
+    <div class="brand">POKER NIGHT</div>
+    <div class="pill">大厅</div>
+  </div>
+  <div class="topbar-center">
+    <div class="table-name">朋友的房间 · 第 12 手</div>
+    <div class="underline"></div>
+  </div>
+  <div class="topbar-right">
+    <div class="pill">⏱ 58:42</div>
+    <div class="balance">$14,520</div>
+    <div class="pill">⚙</div>
+  </div>
+</div>
+
+<div class="stage" id="stage">
+  <div class="table-shadow"></div>
+  <div class="rail"></div>
+  <div class="rail-highlight"></div>
+  <div class="rail-inner-edge"></div>
+  <div class="felt"></div>
+  <div class="felt-glow"></div>
+  <div class="felt-glow-inner"></div>
+
+  <div class="center">
+    <div class="pot-label">POT TOTAL</div>
+    <div class="pot-amount">$2,450</div>
+  </div>
+
+  <div class="community">
+    <div class="card red glow"><span class="rank">A</span><span class="suit-big">♥</span></div>
+    <div class="card black glow"><span class="rank">K</span><span class="suit-big">♣</span></div>
+    <div class="card black glow"><span class="rank">Q</span><span class="suit-big">♣</span></div>
+    <div class="card red glow"><span class="rank">J</span><span class="suit-big">♥</span></div>
+    <div class="card back"></div>
+  </div>
+
+  <div class="dealer-btn" id="dealer">D</div>
+
+  <!-- 我的手牌 -->
+  <div class="hero-hand">
+    <div class="card red"><span class="rank">A</span><span class="suit-big">♥</span></div>
+    <div class="card black"><span class="rank">A</span><span class="suit-big">♠</span></div>
+  </div>
+
+  <!-- 玩家位由 JS 渲染 -->
+  <div id="seats"></div>
+  <div id="bets"></div>
+</div>
+
+<!-- 当前最佳牌型 -->
+<div class="best-hand-card">
+  <div class="lbl">CURRENT BEST</div>
+  <div class="mini-cards">
+    <div class="mini red"><span>A</span><span class="s">♥</span></div>
+    <div class="mini black"><span>K</span><span class="s">♣</span></div>
+    <div class="mini black"><span>Q</span><span class="s">♣</span></div>
+    <div class="mini red"><span>J</span><span class="s">♥</span></div>
+    <div class="mini red"><span>A</span><span class="s">♠</span></div>
+  </div>
+  <div class="desc">Full House (Aces full of Kings)</div>
+</div>
+
+<div class="floats">
+  <button class="float-btn">💬</button>
+  <button class="float-btn">📊</button>
+</div>
+
+<!-- 底部操作区 -->
+<div class="actions">
+  <div class="bet-panel" id="betPanel">
+    <div class="bet-stepper">
+      <button id="bet-minus">−</button>
+      <span class="currency">$</span>
+      <input type="text" class="amount" id="bet-amount" value="100">
+      <button id="bet-plus">+</button>
+    </div>
+    <div class="slider-wrap">
+      <div class="slider-track"></div>
+      <div class="slider-fill" id="slider-fill"></div>
+      <input type="range" class="slider-input" id="bet-slider" min="100" max="14520" value="100" step="50">
+      <div class="slider-bubble" id="bet-bubble">$100</div>
+    </div>
+    <div class="quick-bets" id="quickBets"></div>
+  </div>
+
+  <div class="action-btns" id="actionBtns"></div>
+</div>
+
+<!-- 演示控制盘 -->
+<div class="demo-controls">
+  <h4>预览演示</h4>
+  <div class="group">
+    <div class="group-label">行动场景</div>
+    <button onclick="setScenario('check')">A · 没人下注 (CHECK/BET)</button>
+    <button class="on" onclick="setScenario('call')">B · 跟注 $7,800 (CALL/RAISE)</button>
+    <button onclick="setScenario('allin')">C · 筹码不足 (CALL ALL-IN)</button>
+  </div>
+  <div class="group">
+    <div class="group-label">座位状态</div>
+    <button onclick="toggleSeats()">填满 / 清空空位</button>
+    <button onclick="toggleFolded()">切换 Folded</button>
+  </div>
+</div>
+
+<script>
+  /* ================= 座位定位（关键改动） =================
+     hero 在 6 点钟方向独占底部 100° 弧空白
+     其余 8 个座位在剩余 260° 弧上均匀分布
+     这样 hero 旁边天然留出大空间
+  */
+  const SEATS = [
+    { id: 0, role: 'hero',  name: 'Leo (你)',     stack: 14520, c: ['#2d6a4f','#143829'], letter: 'L' },
+    { id: 1, role: 'pc',    name: 'Felix_Aces',   stack: 1200,  c: ['#5a3a4a','#2a1a26'], letter: 'F', folded: true },
+    { id: 2, role: 'pc',    name: 'TheArchitect', stack: 25000, c: ['#4a3a5a','#1a1a3a'], letter: 'T' },
+    { id: 3, role: 'empty', },
+    { id: 4, role: 'empty', },
+    { id: 5, role: 'empty', },
+    { id: 6, role: 'empty', },
+    { id: 7, role: 'pc',    name: 'CaptainM',     stack: 7800,  c: ['#3a5e8a','#1a2e4a'], letter: 'C', active: true, bet: 7800 },
+    { id: 8, role: 'pc',    name: 'Vegas_Vixen',  stack: 2140,  c: ['#8a3a5a','#4a1a2a'], letter: 'V' },
+  ];
+
+  // 8 非 hero 座位的角度（顺时针，0° = 12 点）
+  // hero 占据底部 [220°, 320°] 这 100° 弧（其实是 [-50°, +50°] from 6 点钟）
+  // 8 个其他座位均匀分布在 [320° → 220° 经 0°] 的 260° 弧上
+  // 起点 320°（hero 左侧），终点 220°（hero 右侧），共 7 段，每段 ~37.14°
+  const NON_HERO_ANGLES = [];
+  const startAngle = 230;  // hero 右下方第一个座位的位置（左侧近 hero）
+  const sweep = 260;       // 弧总跨度
+  const steps = 7;         // 8 个座位 = 7 段间隔
+  for (let i = 0; i < 8; i++) {
+    NON_HERO_ANGLES.push((startAngle + (sweep / steps) * i) % 360);
+  }
+  // 上面循环让座位 1=230°(左下), 2≈267°(左中), 3≈304°(左上), 4≈342°(顶左)
+  // 5≈19°(顶右), 6≈56°(右上), 7≈93°(右中), 8≈130°(右下)
+
+  // 椭圆采样半径（占舞台的百分比）
+  const RX = 0.46, RY = 0.44;
+
+  function angleToPct(deg) {
+    const r = (deg) * Math.PI / 180;
+    const x = 0.5 + RX * Math.sin(r);
+    const y = 0.5 - RY * Math.cos(r);
+    return { x: x * 100, y: y * 100 };
+  }
+
+  function renderSeats() {
+    const container = document.getElementById('seats');
+    container.innerHTML = '';
+    SEATS.forEach((s, i) => {
+      let pos;
+      if (s.role === 'hero') {
+        pos = { x: 50, y: 96 };  // hero 在底部正中、贴近桌沿
+      } else {
+        const idx = i - 1;  // 1..8 → 0..7
+        pos = angleToPct(NON_HERO_ANGLES[idx]);
+      }
+
+      const seat = document.createElement('div');
+      seat.className = 'seat';
+      if (s.active) seat.classList.add('active');
+      if (s.folded) seat.classList.add('folded');
+      seat.style.left = pos.x + '%';
+      seat.style.top = pos.y + '%';
+      seat.dataset.id = s.id;
+
+      if (s.role === 'empty') {
+        seat.innerHTML = `
+          <div class="seat-inner">
+            <div class="avatar-ring" style="opacity:0.35; background: transparent; border: 1.5px dashed rgba(255,255,255,0.15);">
+              <div class="avatar" style="background: transparent; color: #5a8878; font-size: 20px;">+</div>
+            </div>
+            <div class="name-tag" style="background: transparent; border: 1px dashed rgba(255,255,255,0.1); box-shadow: none;">
+              <div class="name" style="color:#5a8878">空位</div>
+            </div>
+          </div>`;
+      } else {
+        const action = s.action ? `<div class="action-bubble ${s.actionType||''}">${s.action}</div>` : '';
+        seat.innerHTML = `
+          <div class="seat-inner">
+            ${action}
+            <div class="avatar-ring">
+              <svg class="timer-ring" viewBox="0 0 80 80">
+                <circle class="bg" cx="40" cy="40" r="36"/>
+                <circle class="fg" cx="40" cy="40" r="36"/>
+              </svg>
+              <div class="avatar" style="background: linear-gradient(135deg, ${s.c[0]}, ${s.c[1]});">${s.letter}</div>
+            </div>
+            <div class="name-tag">
+              <div class="name">${s.name}</div>
+              <div class="stack ${s.stack===0?'zero':''}">$${s.stack.toLocaleString()}</div>
+            </div>
+          </div>`;
+      }
+      container.appendChild(seat);
+    });
+    renderBets();
+    placeDealer();
+  }
+
+  /* 已下注的筹码图标（从玩家位向桌中心方向延伸） */
+  function renderBets() {
+    const container = document.getElementById('bets');
+    container.innerHTML = '';
+    SEATS.forEach((s, i) => {
+      if (!s.bet) return;
+      let seatPos;
+      if (s.role === 'hero') seatPos = { x: 50, y: 96 };
+      else seatPos = angleToPct(NON_HERO_ANGLES[i - 1]);
+      // 向中心方向插入 1/3 距离
+      const cx = 50, cy = 50;
+      const bx = seatPos.x + (cx - seatPos.x) * 0.32;
+      const by = seatPos.y + (cy - seatPos.y) * 0.32;
+      const chip = document.createElement('div');
+      chip.className = 'bet-chip';
+      chip.style.left = bx + '%';
+      chip.style.top = by + '%';
+      chip.style.transform = 'translate(-50%, -50%)';
+      chip.innerHTML = `<div class="chip-icon"></div><div class="amt">$${s.bet.toLocaleString()}</div>`;
+      container.appendChild(chip);
+    });
+  }
+
+  function placeDealer() {
+    // 把 D 放在 active 玩家附近作为示例（CaptainM = 7 号位）
+    const idx = SEATS.findIndex(s => s.role === 'pc' && s.active) || 7;
+    const angle = idx === 0 ? 180 : NON_HERO_ANGLES[idx - 1];
+    const r = (angle - 25) * Math.PI / 180;  // 偏移一点
+    const x = 50 + (RX - 0.08) * Math.sin(r) * 100 / 100;
+    const y = 50 - (RY - 0.08) * Math.cos(r) * 100 / 100;
+    const d = document.getElementById('dealer');
+    d.style.left = (50 + (RX - 0.08) * Math.sin(r) * 100) + '%';
+    d.style.top = (50 - (RY - 0.08) * Math.cos(r) * 100) + '%';
+    d.style.transform = 'translate(-50%, -50%)';
+  }
+
+  /* ================= 行动场景切换 ================= */
+  const POT = 2450;
+  const MY_STACK = 14520;
+  const SCENARIOS = {
+    'check': {  // 没人下注：CHECK / BET
+      toCall: 0, minBet: 50, maxBet: MY_STACK,
+      btns: [
+        { cls: 'btn-fold', html: '<span class="lbl">FOLD</span>', dim: true },
+        { cls: 'btn-call', html: '<span class="lbl">CHECK</span>' },
+        { cls: 'btn-bet',  html: '<span class="lbl">BET</span><span class="val" id="bet-btn-val">$50</span>' },
+      ],
+      panelEnabled: true,
+      panelDefault: 50,
+    },
+    'call': {  // 跟注 $7,800
+      toCall: 7800, minBet: 15600, maxBet: MY_STACK,
+      btns: [
+        { cls: 'btn-fold', html: '<span class="lbl">FOLD</span>' },
+        { cls: 'btn-call', html: '<span class="lbl">CALL</span><span class="val">$7,800</span>' },
+        { cls: 'btn-bet',  html: '<span class="lbl">RAISE TO</span><span class="val" id="bet-btn-val">$15,600</span>' },
+      ],
+      panelEnabled: true,
+      panelDefault: 15600,
+    },
+    'allin': {  // 我筹码 $5,000，对方 $7,800 → 只能 ALL-IN call
+      toCall: 7800, minBet: 0, maxBet: 0,
+      btns: [
+        { cls: 'btn-fold', html: '<span class="lbl">FOLD</span>' },
+        { cls: 'btn-call', html: '<span class="lbl">CALL</span><span class="val">$5,000</span><span class="sub">ALL-IN</span>' },
+        { cls: 'btn-bet',  html: '<span class="lbl">RAISE</span>', disabled: true },
+      ],
+      panelEnabled: false,
+    },
+  };
+
+  function buildQuickBets(toCall) {
+    const wrap = document.getElementById('quickBets');
+    wrap.innerHTML = '';
+    const opts = toCall > 0
+      ? [
+        { lbl: 'Min', mult: 'min' },
+        { lbl: 'Pot', mult: 1 },
+        { lbl: '×2',  mult: 2 },
+        { lbl: '×3',  mult: 3 },
+        { lbl: 'All-In', mult: -1 },
+      ]
+      : [
+        { lbl: 'Min', mult: 'min' },
+        { lbl: '½ Pot', mult: 0.5 },
+        { lbl: 'Pot', mult: 1 },
+        { lbl: '×2', mult: 2 },
+        { lbl: 'All-In', mult: -1 },
+      ];
+    opts.forEach(o => {
+      const v = computeQuickValue(o.mult, toCall);
+      const btn = document.createElement('button');
+      btn.className = 'quick-bet';
+      btn.dataset.mult = o.mult;
+      btn.innerHTML = `${o.lbl}<small>$${v.toLocaleString()}</small>`;
+      wrap.appendChild(btn);
+      btn.addEventListener('click', () => {
+        updateUI(v, o.mult);
+      });
+    });
+  }
+
+  function computeQuickValue(mult, toCall) {
+    const sc = currentScenario();
+    if (mult === 'min') return sc.minBet;
+    if (mult === -1) return sc.maxBet;
+    return Math.min(sc.maxBet, Math.max(sc.minBet, Math.round(POT * mult)));
+  }
+
+  /* ================= 滑条同步 ================= */
+  const slider = document.getElementById('bet-slider');
+  const fill = document.getElementById('slider-fill');
+  const bubble = document.getElementById('bet-bubble');
+  const amountInput = document.getElementById('bet-amount');
+
+  function updateUI(value, sourceMult) {
+    const sc = currentScenario();
+    value = Math.max(sc.minBet, Math.min(sc.maxBet, value));
+    slider.min = sc.minBet;
+    slider.max = sc.maxBet;
+    slider.value = value;
+    const pct = ((value - sc.minBet) / Math.max(1, (sc.maxBet - sc.minBet))) * 100;
+    fill.style.width = pct + '%';
+    bubble.style.left = pct + '%';
+    bubble.textContent = '$' + value.toLocaleString();
+    amountInput.value = value.toLocaleString();
+    const btnVal = document.getElementById('bet-btn-val');
+    if (btnVal) btnVal.textContent = '$' + value.toLocaleString();
+    document.querySelectorAll('.quick-bet').forEach(b => b.classList.remove('active'));
+    if (sourceMult !== undefined) {
+      const m = String(sourceMult);
+      const matched = [...document.querySelectorAll('.quick-bet')].find(b => b.dataset.mult === m);
+      if (matched) matched.classList.add('active');
+    }
+  }
+
+  slider.addEventListener('input', () => updateUI(parseInt(slider.value)));
+  amountInput.addEventListener('change', () => {
+    const v = parseInt(amountInput.value.replace(/,/g, '')) || 0;
+    updateUI(v);
+  });
+  document.getElementById('bet-minus').addEventListener('click', () => updateUI(parseInt(slider.value) - 50));
+  document.getElementById('bet-plus').addEventListener('click', () => updateUI(parseInt(slider.value) + 50));
+
+  /* ================= 应用场景 ================= */
+  let _scenario = 'call';
+  const currentScenario = () => SCENARIOS[_scenario];
+
+  function setScenario(name) {
+    _scenario = name;
+    document.querySelectorAll('.demo-controls button').forEach(b => b.classList.remove('on'));
+    event.target.classList.add('on');
+
+    const sc = SCENARIOS[name];
+    const btnsEl = document.getElementById('actionBtns');
+    btnsEl.innerHTML = '';
+    sc.btns.forEach(b => {
+      const el = document.createElement('button');
+      el.className = 'btn ' + b.cls;
+      if (b.disabled) el.disabled = true;
+      el.innerHTML = b.html;
+      btnsEl.appendChild(el);
+    });
+
+    const panel = document.getElementById('betPanel');
+    panel.classList.toggle('hidden', !sc.panelEnabled);
+
+    if (sc.panelEnabled) {
+      buildQuickBets(sc.toCall);
+      updateUI(sc.panelDefault);
+    }
+  }
+
+  /* ================= 演示控制 ================= */
+  function toggleSeats() {
+    const empties = SEATS.filter(s => s.role === 'empty');
+    if (empties.length > 0) {
+      const fillData = [
+        { name: 'AceWolf',   stack: 8450,  c: ['#5a4a3a','#2a1a0a'], letter: 'A' },
+        { name: 'PoolShark', stack: 3200,  c: ['#3a5a4a','#1a2a1a'], letter: 'P' },
+        { name: 'BluffKing', stack: 11100, c: ['#5a3a3a','#2a1a1a'], letter: 'B' },
+        { name: 'RiverRat',  stack: 680,   c: ['#3a3a5a','#1a1a2a'], letter: 'R' },
+      ];
+      let k = 0;
+      SEATS.forEach(s => {
+        if (s.role === 'empty' && k < fillData.length) {
+          Object.assign(s, fillData[k++], { role: 'pc' });
+        }
+      });
+    } else {
+      SEATS.forEach(s => {
+        if (s.id !== 0 && s.id !== 1 && s.id !== 2 && s.id !== 7 && s.id !== 8) {
+          for (const k in s) delete s[k];
+          s.id = SEATS.indexOf(s);
+          s.role = 'empty';
+        }
+      });
+    }
+    renderSeats();
+  }
+
+  function toggleFolded() {
+    const t = SEATS.find(s => s.name === 'TheArchitect');
+    if (t) t.folded = !t.folded;
+    renderSeats();
+  }
+
+  /* ================= 初始化 ================= */
+  setScenario('call');
+  renderSeats();
+</script>
+
+</body>
+</html>
