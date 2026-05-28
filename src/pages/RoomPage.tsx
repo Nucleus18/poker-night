@@ -77,10 +77,11 @@ export default function RoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // 倒计时
+  // 倒计时（暂停状态下停止）
   useEffect(() => {
     if (!state) return;
     if (showLeaderboard) return;
+    if (state.waitingToStart) return;  // paused / 等待大厅时不走时
     const t = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
     return () => clearInterval(t);
   }, [state, showLeaderboard]);

@@ -195,6 +195,12 @@ export default class PokerRoom implements Party.Server {
         this.seatToConn.delete(seat);
         // 不删 seatToAccount：保留账号绑定，避免重连时被识别成新人占别的位置
         this.broadcastState();
+
+        // 离开后人数不足 → 进入暂停等待（如果当前在牌局中且只剩 1 人，等当前手 finalize 后会自然走 tryStartNextHand）
+        // 如果当前已经是 idle / 等待中，立即评估
+        if (this.state.street === 'idle' || this.state.street === 'paused') {
+          this.tryStartNextHand();
+        }
         break;
       }
     }
@@ -217,6 +223,11 @@ export default class PokerRoom implements Party.Server {
       next.players[seat] = { ...next.players[seat], isSittingOut: true };
       this.state = next;
       this.broadcastState();
+
+      // 断线后人数不足 → 进入暂停（如果当前在牌局中且只剩 1 人，等当前手 finalize 后会自然走 tryStartNextHand）
+      if (this.state.street === 'idle' || this.state.street === 'paused') {
+        this.tryStartNextHand();
+      }
     }
   }
 
@@ -330,16 +341,67 @@ export default class PokerRoom implements Party.Server {
       setTimeout(() => {
         if (!this.state) return;
         if (this.state.endingAfterHand) return;
-        // 开新一手前清理破产但不补码的人（保持座位但 isSittingOut）
-        this.state = startNewHand(this.state);
-        this.broadcastState();
-        this.scheduleAI();
-        this.scheduleTurnTimeout();
+        this.tryStartNextHand();
       }, dur);
     } else {
       this.scheduleAI();
       this.scheduleTurnTimeout();
     }
+  }
+
+  /**
+   * 尝试开新一手；人不够 / 没人 ready 时进入 paused 等待状态
+   */
+  private tryStartNextHand() {
+    if (!this.state) return;
+    // 还能继续打的玩家：在场（未离场）+ 有筹码 / 可补码
+    const activePlayers = this.state.players.filter(
+      (p) => p.accountId && !p.isSittingOut && !p.hasLeft && (p.stack > 0 || (p.outOfChips && p.rebuysLeft > 0)),
+    );
+
+    if (activePlayers.length < 2) {
+      // 暂停等待新人加入
+      this.enterPaused();
+      return;
+    }
+
+    // 自动开下一手
+    this.state = startNewHand(this.state);
+    this.broadcastState();
+    this.scheduleAI();
+    this.scheduleTurnTimeout();
+  }
+
+  /** 进入暂停等待状态 */
+  private enterPaused() {
+    if (!this.state) return;
+    if (this.aiTimer) { clearTimeout(this.aiTimer); this.aiTimer = null; }
+    if (this.turnTimer) { clearTimeout(this.turnTimer); this.turnTimer = null; }
+    const next = { ...this.state, players: this.state.players.map((p) => ({ ...p })) };
+    next.street = 'paused' as any;
+    next.waitingToStart = true;
+    next.toActSeat = -1;
+    // 重置每个真人的 ready：要求重新点准备（避免上局结束就自动开下局）
+    next.players = next.players.map((p) => {
+      if (p.isAI || !p.accountId || p.hasLeft || p.isSittingOut) return p;
+      return { ...p, ready: false };
+    });
+    // 房主转移：若当前 host 已离场或不在线，找第一个仍在场的真人当 host
+    const currentHost = next.players[next.hostSeatIdx];
+    if (!currentHost || currentHost.hasLeft || currentHost.isSittingOut || !currentHost.accountId) {
+      const newHost = next.players.find((p) => p.accountId && !p.hasLeft && !p.isSittingOut && !p.isAI);
+      if (newHost) {
+        next.hostSeatIdx = newHost.seatIdx;
+        this.hostAccountId = newHost.accountId;
+      }
+    }
+    this.state = next;
+    this.broadcastState();
+  }
+
+  private dispatchOld(seatIdx: number, kind: ActionKind, amount?: number) {
+    // legacy placeholder (unused)
+    void seatIdx; void kind; void amount;
   }
 
   private scheduleAI() {

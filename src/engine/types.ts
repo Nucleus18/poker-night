@@ -8,7 +8,7 @@ export interface Card {
   suit: Suit;
 }
 
-export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'idle';
+export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown' | 'idle' | 'paused';
 
 export type ActionKind = 'fold' | 'check' | 'call' | 'bet' | 'raise' | 'allin';
 
