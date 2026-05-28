@@ -46,7 +46,7 @@ export default function Leaderboard({ state, onRestart, onExit }: Props) {
               <div className="flex-1">
                 <div className="font-medium">{p.name}{p.isHero && <span className="text-[10px] text-emerald-400 ml-2">(你)</span>}</div>
                 <div className="text-xs text-emerald-100/50">
-                  {p.outOfChips ? '已破产' : p.isAllIn ? 'All-in 后' : '在场'}
+                  {p.hasLeft ? '中途离场' : p.outOfChips ? '已破产' : p.isAllIn ? 'All-in 后' : '在场'}
                 </div>
               </div>
               <div className="text-right">

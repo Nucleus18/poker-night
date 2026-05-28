@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore, PRESET_COLORS } from '@/auth/store';
-import { useRoomStore, generateRoomCode } from '@/room/store';
+import { useRoomStore, generateRoomCode, loadActiveRoomFor } from '@/room/store';
 
 type Mode = 'local' | 'create' | 'join';
 
@@ -13,40 +13,49 @@ export default function LobbyPage() {
   const joinOnlineRoom = useRoomStore((s) => s.joinOnlineRoom);
   const navigate = useNavigate();
 
+  // 进大厅时检查是否有未结束的房间，提示恢复
+  const [activeRoomCode, setActiveRoomCode] = useState<string | null>(null);
+  useEffect(() => {
+    const active = loadActiveRoomFor(user.id);
+    if (active) setActiveRoomCode(active.id);
+  }, [user.id]);
+
   const [mode, setMode] = useState<Mode>('local');
   const [name, setName] = useState('朋友的局');
-  const [smallBlind, setSmallBlind] = useState(25);
-  const [bigBlind, setBigBlind] = useState(50);
-  const [startingStack, setStartingStack] = useState(5000);
-  const [rebuyAmount, setRebuyAmount] = useState(5000);
-  const [maxRebuys, setMaxRebuys] = useState(3);
-  const [durationMin, setDurationMin] = useState(60);
+  const [smallBlind, setSmallBlind] = useState(2);
+  const [bigBlind, setBigBlind] = useState(4);
+  const [startingStack, setStartingStack] = useState(1600);
+  const [rebuyAmount, setRebuyAmount] = useState(1600);
+  const [maxRebuys, setMaxRebuys] = useState(10);
+  const [durationMin, setDurationMin] = useState(30);
   const [aiCount, setAiCount] = useState(5);
   const [joinCode, setJoinCode] = useState('');
   const [joinErr, setJoinErr] = useState('');
 
   const start = () => {
     const config = {
-      name, smallBlind, bigBlind, startingStack, rebuyAmount, maxRebuys, durationMin, aiCount,
+      name, smallBlind, bigBlind, startingStack, rebuyAmount, maxRebuys, durationMin,
+      // 在线房间默认 0 个 AI；本地默认 5 个
+      aiCount: mode === 'create' ? 0 : aiCount,
       step: smallBlind,
     };
     if (mode === 'local') {
-      const id = createLocalRoom(config);
+      const id = createLocalRoom(config, user.id);
       navigate(`/room/${id}`);
     } else if (mode === 'create') {
       const code = generateRoomCode();
-      createOnlineRoom(code, config);
+      createOnlineRoom(code, config, user.id);
       navigate(`/room/${code}`);
     }
   };
 
   const joinRoom = () => {
-    const code = joinCode.trim().toUpperCase();
-    if (!/^[A-Z2-9]{6}$/.test(code)) {
-      setJoinErr('房间码格式：6 位大写字母或数字');
+    const code = joinCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setJoinErr('房间码格式：6 位数字');
       return;
     }
-    joinOnlineRoom(code);
+    joinOnlineRoom(code, user.id);
     navigate(`/room/${code}`);
   };
 
@@ -65,6 +74,36 @@ export default function LobbyPage() {
 
       <main className="flex-1 overflow-auto p-8">
         <div className="max-w-3xl mx-auto">
+          {/* 未结束房间恢复卡 */}
+          {activeRoomCode && (
+            <div className="mb-6 bg-emerald-500/10 border border-emerald-500/40 rounded-2xl p-5 flex items-center gap-4">
+              <div className="flex-1">
+                <div className="text-xs tracking-[2px] text-emerald-300 mb-1">未结束的房间</div>
+                <div className="text-base font-semibold">
+                  房间码 <span className="font-mono text-amber-200">{activeRoomCode}</span>
+                </div>
+                <div className="text-xs text-emerald-100/60 mt-0.5">点击恢复继续游戏，筹码会保持</div>
+              </div>
+              <button
+                onClick={() => navigate(`/room/${activeRoomCode}`)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-semibold tracking-wider transition-colors"
+              >
+                返回房间
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('确定离开当前房间？\n联机房间退出后筹码会丢失，但战绩会在该局结算时显示。')) {
+                    useRoomStore.getState().leaveActiveRoom();
+                    setActiveRoomCode(null);
+                  }
+                }}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-emerald-100/70"
+              >
+                放弃
+              </button>
+            </div>
+          )}
+
           {/* 模式切换 */}
           <div className="flex gap-2 mb-6">
             <ModeTab active={mode === 'local'} onClick={() => setMode('local')}>
@@ -72,7 +111,7 @@ export default function LobbyPage() {
               <div className="text-[11px] opacity-60">vs AI · 立刻开打</div>
             </ModeTab>
             <ModeTab active={mode === 'create'} onClick={() => setMode('create')}>
-              <div className="text-base font-semibold">创建朋友局</div>
+              <div className="text-base font-semibold">创建在线房间</div>
               <div className="text-[11px] opacity-60">生成房间码 · 分享给朋友</div>
             </ModeTab>
             <ModeTab active={mode === 'join'} onClick={() => setMode('join')}>
@@ -85,11 +124,12 @@ export default function LobbyPage() {
             <div className="bg-black/30 border border-white/10 rounded-2xl p-6">
               <Field label="房间码">
                 <input
-                  className="input-base w-full font-mono text-2xl tracking-[8px] text-center uppercase"
+                  className="input-base w-full font-mono text-2xl tracking-[8px] text-center"
                   value={joinCode}
-                  onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinErr(''); }}
+                  onChange={(e) => { setJoinCode(e.target.value.replace(/\D/g, '')); setJoinErr(''); }}
                   maxLength={6}
-                  placeholder="ABCDEF"
+                  placeholder="000000"
+                  inputMode="numeric"
                   autoFocus
                 />
               </Field>
@@ -135,9 +175,11 @@ export default function LobbyPage() {
                 </Field>
               </div>
 
-              <Field label={`AI 玩家数：${aiCount}${mode === 'create' ? '（其余空位等真人加入）' : ''}`}>
-                <input type="range" className="range-input" min={0} max={8} value={aiCount} onChange={(e) => setAiCount(+e.target.value)} />
-              </Field>
+              {mode === 'local' && (
+                <Field label={`AI 玩家数：${aiCount}`}>
+                  <input type="range" className="range-input" min={0} max={8} value={aiCount} onChange={(e) => setAiCount(+e.target.value)} />
+                </Field>
+              )}
 
               <button onClick={start} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-lg tracking-wider transition-colors">
                 {mode === 'local' ? '开局' : '创建房间'}

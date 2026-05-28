@@ -123,6 +123,10 @@ export class SocketAdapter implements IAdapter {
     this.socket.send(JSON.stringify({ type: 'startHand' }));
   }
 
+  toggleReady() {
+    this.socket.send(JSON.stringify({ type: 'toggleReady' }));
+  }
+
   hero(kind: ActionKind, amount?: number) {
     if (!this.state || this.state.toActSeat !== this.mySeatIdx) return;
     this.socket.send(JSON.stringify({ type: 'action', kind, amount }));
@@ -134,6 +138,10 @@ export class SocketAdapter implements IAdapter {
 
   rebuy() {
     this.socket.send(JSON.stringify({ type: 'rebuy' }));
+  }
+
+  leave() {
+    try { this.socket.send(JSON.stringify({ type: 'leave' })); } catch { /* ignore */ }
   }
 
   destroy() {

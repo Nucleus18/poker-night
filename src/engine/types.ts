@@ -45,6 +45,10 @@ export interface Player {
   showCardsEnabled: boolean;
   // 本手结束时是否展示牌（引擎在 finalizeHand 时设置；新一手重置）
   revealCards: boolean;
+  // 准备状态（仅在线房间使用：等待房主开始时每个真人需要点准备）
+  ready: boolean;
+  // 主动离开房间标记：保留 stack 和 name 用于积分榜，但不再发牌、不再行动
+  hasLeft?: boolean;
 }
 
 export interface Pot {
@@ -79,5 +83,8 @@ export interface GameState {
   startedAt: number;      // ms
   endingAfterHand: boolean; // 限时到了，本手打完结束
   finished: boolean;
+  // 等待房主开始游戏阶段（仅在线房间）：true 表示还没开第一手
+  waitingToStart: boolean;
+  hostSeatIdx: number;    // 房主座位（仅在线房间，本地恒为 0）
   winners?: { seatIdx: number; amount: number; handDescription?: string }[];
 }

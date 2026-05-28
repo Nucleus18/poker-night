@@ -203,7 +203,21 @@ export default function RoomPage() {
       <header className="fixed top-0 left-0 right-0 h-14 px-6 flex items-center justify-between z-50" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0))' }}>
         <div className="flex gap-3 items-center">
           <div className="font-cinzel tracking-[4px] text-emerald-100/90 text-base">POKER NIGHT</div>
-          <button onClick={() => navigate('/')} className="pill">大厅</button>
+          <button
+            onClick={() => {
+              const tip = room.mode === 'online'
+                ? '确定退出房间？\n联机模式下退出后筹码会丢失（保留到本手结算后再清算积分）。'
+                : '确定退出房间？';
+              if (!confirm(tip)) return;
+              try { adapterRef.current?.leave?.(); } catch { /* ignore */ }
+              useRoomStore.getState().leaveActiveRoom();
+              navigate('/');
+            }}
+            className="pill"
+            title="退出房间"
+          >
+            退出房间
+          </button>
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <div className="text-sm">{(state.config?.name || room.config?.name || '房间')} · 第 {state.handNumber} 手</div>
@@ -267,7 +281,7 @@ export default function RoomPage() {
 
           {/* Dealer button */}
           {state.buttonSeat >= 0 && (() => {
-            const pos = getDealerPosition(state.buttonSeat);
+            const pos = getDealerPosition(state.buttonSeat, mySeatIdx);
             return (
               <div
                 className="absolute w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-gray-900 z-[5]"
@@ -282,7 +296,7 @@ export default function RoomPage() {
 
           {/* 玩家位 */}
           {state.players.map((p) => {
-            const pos = getSeatPosition(p.seatIdx);
+            const pos = getSeatPosition(p.seatIdx, mySeatIdx);
             const isEmpty = !p.accountId || p.isSittingOut;
             return (
               <Seat
@@ -307,7 +321,7 @@ export default function RoomPage() {
           {/* Bet 筹码胶囊（包括 hero 自己的） */}
           {state.players.map((p) => {
             if (!p.betThisRound) return null;
-            const pos = getBetChipPosition(p.seatIdx);
+            const pos = getBetChipPosition(p.seatIdx, mySeatIdx);
             return (
               <div
                 key={`bet-${p.seatIdx}`}
@@ -457,7 +471,7 @@ export default function RoomPage() {
 
               {/* 升级版筹码飞行：从底池炸开旋转飞向每个胜者 */}
               {state.winners.flatMap((w, wi) => {
-                const target = getSeatPosition(w.seatIdx);
+                const target = getSeatPosition(w.seatIdx, mySeatIdx);
                 // 每个胜者飞 3 颗筹码，错峰发射
                 return [0, 1, 2].map((k) => (
                   <div
@@ -517,24 +531,116 @@ export default function RoomPage() {
         <BestHand holeCards={hero.holeCards} community={state.community} />
       )}
 
+      {/* 等待开始游戏覆盖层（仅在线房间且未开第一手） */}
+      {state.waitingToStart && room.mode === 'online' && (() => {
+        const realPlayers = state.players.filter((p) => !p.isSittingOut && !p.isAI && p.accountId);
+        const readyCount = realPlayers.filter((p) => p.ready).length;
+        const allReady = readyCount === realPlayers.length;
+        const enoughPlayers = realPlayers.length >= 2;
+        const isHost = state.hostSeatIdx === mySeatIdx;
+        return (
+          <div className="fixed left-1/2 -translate-x-1/2 z-[55] flex flex-col items-center gap-3" style={{ bottom: 200 }}>
+            <div
+              className="px-5 py-3 rounded-xl backdrop-blur-md text-center"
+              style={{
+                background: 'rgba(8,18,14,0.92)',
+                border: '1.5px solid rgba(16,185,129,0.5)',
+                boxShadow: '0 0 24px rgba(16,185,129,0.25), 0 8px 20px rgba(0,0,0,0.6)',
+                minWidth: 320,
+              }}
+            >
+              <div className="text-[10px] tracking-[3px] text-emerald-300/80 mb-1">WAITING ROOM</div>
+              <div className="text-lg font-semibold text-white mb-2">
+                {realPlayers.length} 人在场 · {readyCount}/{realPlayers.length} 准备
+              </div>
+              <div className="flex flex-wrap justify-center gap-1.5 mb-3">
+                {realPlayers.map((p) => (
+                  <div
+                    key={p.seatIdx}
+                    className="px-2 py-0.5 rounded text-[11px] font-medium"
+                    style={{
+                      background: p.ready ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${p.ready ? '#10b981' : 'rgba(255,255,255,0.15)'}`,
+                      color: p.ready ? '#10b981' : '#9fdcc2',
+                    }}
+                  >
+                    {p.ready ? '✓' : '·'} {p.name}
+                    {p.seatIdx === state.hostSeatIdx && <span className="ml-1 opacity-70">(房主)</span>}
+                  </div>
+                ))}
+              </div>
+              {!enoughPlayers && (
+                <div className="text-[11px] text-amber-300/80">至少需要 2 个真人，分享房间码邀请朋友</div>
+              )}
+              {enoughPlayers && !allReady && !isHost && (
+                <div className="text-[11px] text-emerald-100/60">等待其他玩家准备 / 房主开始</div>
+              )}
+              {enoughPlayers && allReady && !isHost && (
+                <div className="text-[11px] text-emerald-300">全员准备完毕 · 等房主开始</div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => adapterRef.current?.toggleReady()}
+                className="px-6 py-2.5 rounded-lg font-semibold tracking-wider transition-all"
+                style={{
+                  background: hero.ready ? 'rgba(255,255,255,0.06)' : 'linear-gradient(180deg, #10b981, #0e8e6c)',
+                  border: hero.ready ? '1.5px solid rgba(255,255,255,0.25)' : '1.5px solid #10b981',
+                  color: hero.ready ? '#9fdcc2' : '#fff',
+                  boxShadow: hero.ready ? 'none' : '0 0 16px rgba(16,185,129,0.5)',
+                  minWidth: 130,
+                }}
+              >
+                {hero.ready ? '取消准备' : '准备'}
+              </button>
+              {isHost && (
+                <button
+                  onClick={() => adapterRef.current?.startHand()}
+                  disabled={!enoughPlayers || !allReady}
+                  className="px-6 py-2.5 rounded-lg font-semibold tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'linear-gradient(180deg, #d4af37, #8a6f1a)',
+                    color: '#1a1a1a',
+                    boxShadow: enoughPlayers && allReady ? '0 4px 0 #4a3808, 0 6px 12px rgba(0,0,0,0.4)' : 'none',
+                    minWidth: 150,
+                  }}
+                >
+                  开始游戏
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 本地模式 idle 状态：显示加载中（启动 / 配置错误时） */}
+      {state.waitingToStart && room.mode === 'local' && (
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[55] text-emerald-100/50">
+          准备中...
+        </div>
+      )}
+
       {/* 底部行动区 */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 px-6 py-4" style={{ background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.85))' }}>
-        <BetPanel
-          scenario={myScenario}
-          toCall={myToCall}
-          myStack={hero.stack}
-          pot={pot}
-          minBet={myScenario === 'check' ? state.config.bigBlind : minRaiseTo}
-          maxBet={hero.stack + hero.betThisRound}
-          step={state.config.step}
-          bigBlind={state.config.bigBlind}
-          onFold={() => adapterRef.current?.hero('fold')}
-          onCheck={() => adapterRef.current?.hero('check')}
-          onCall={() => adapterRef.current?.hero('call')}
-          onBet={(amt) => adapterRef.current?.hero(myScenario === 'check' ? 'bet' : 'raise', amt)}
-          onAllIn={() => adapterRef.current?.hero('allin')}
-        />
-      </div>
+      {!state.waitingToStart && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 px-6 py-4" style={{ background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.85))' }}>
+          <BetPanel
+            scenario={myScenario}
+            toCall={myToCall}
+            myStack={hero.stack}
+            pot={pot}
+            minBet={myScenario === 'check' ? state.config.bigBlind : minRaiseTo}
+            maxBet={hero.stack + hero.betThisRound}
+            step={state.config.step}
+            bigBlind={state.config.bigBlind}
+            onFold={() => adapterRef.current?.hero('fold')}
+            onCheck={() => adapterRef.current?.hero('check')}
+            onCall={() => adapterRef.current?.hero('call')}
+            onBet={(amt) => adapterRef.current?.hero(myScenario === 'check' ? 'bet' : 'raise', amt)}
+            onAllIn={() => adapterRef.current?.hero('allin')}
+          />
+        </div>
+      )}
 
       {/* 秀牌开关 toast */}
       {showToast && (

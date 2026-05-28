@@ -4,30 +4,33 @@ import type { RoomConfig } from '@/engine/types';
 export type RoomMode = 'local' | 'online';
 
 export interface RoomMeta {
-  id: string;            // 房间码（联机时是用户输入/分享的；本地时是随机的 r 前缀）
+  id: string;            // 房间码
   mode: RoomMode;
-  isHost: boolean;       // 是否为创建者（联机模式下 host 携带 config）
-  config?: RoomConfig;   // 联机加入时可能为空，由服务器广播补齐
+  isHost: boolean;
+  config?: RoomConfig;
   createdAt: number;
+  boundAccountId?: string; // 绑定的账号（用于自动跳回房间时校验）
 }
 
 interface RoomStore {
   rooms: Record<string, RoomMeta>;
-  createLocalRoom: (config: RoomConfig) => string;
-  createOnlineRoom: (code: string, config: RoomConfig) => void;
-  joinOnlineRoom: (code: string) => void;
+  createLocalRoom: (config: RoomConfig, accountId: string) => string;
+  createOnlineRoom: (code: string, config: RoomConfig, accountId: string) => void;
+  joinOnlineRoom: (code: string, accountId: string) => void;
   getRoom: (id: string) => RoomMeta | undefined;
+  leaveActiveRoom: () => void;
 }
 
-const STORAGE_KEY = 'poker_active_room';
+const STORAGE_KEY = 'poker_active_room_v2';
+// localStorage：跨浏览器关闭/重启都能恢复（和 sessionStorage 不同）
 
 function persist(meta: RoomMeta) {
-  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(meta)); } catch { /* ignore */ }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(meta)); } catch { /* ignore */ }
 }
 
 function loadCached(id: string): RoomMeta | undefined {
   try {
-    const cached = sessionStorage.getItem(STORAGE_KEY);
+    const cached = localStorage.getItem(STORAGE_KEY);
     if (!cached) return;
     const meta: RoomMeta = JSON.parse(cached);
     if (meta.id === id) return meta;
@@ -35,33 +38,48 @@ function loadCached(id: string): RoomMeta | undefined {
   return undefined;
 }
 
-/** 6 位字母数字房间码（避开易混淆字符） */
+/** 读出当前活跃房间（用于自动跳回）；按 accountId 过滤，避免不同账号串房间 */
+export function loadActiveRoomFor(accountId: string): RoomMeta | undefined {
+  try {
+    const cached = localStorage.getItem(STORAGE_KEY);
+    if (!cached) return;
+    const meta: RoomMeta = JSON.parse(cached);
+    // 房间必须是这个账号绑定的
+    if (meta.boundAccountId === accountId) return meta;
+  } catch { /* ignore */ }
+  return undefined;
+}
+
+export function clearActiveRoom() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+}
+
+/** 6 位数字房间码 */
 export function generateRoomCode(): string {
-  const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';
-  for (let i = 0; i < 6; i++) s += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+  for (let i = 0; i < 6; i++) s += Math.floor(Math.random() * 10);
   return s;
 }
 
 export const useRoomStore = create<RoomStore>((set, get) => ({
   rooms: {},
 
-  createLocalRoom: (config) => {
+  createLocalRoom: (config, accountId) => {
     const id = 'L' + Math.random().toString(36).slice(2, 7).toUpperCase();
-    const meta: RoomMeta = { id, mode: 'local', isHost: true, config, createdAt: Date.now() };
+    const meta: RoomMeta = { id, mode: 'local', isHost: true, config, createdAt: Date.now(), boundAccountId: accountId };
     set((s) => ({ rooms: { ...s.rooms, [id]: meta } }));
     persist(meta);
     return id;
   },
 
-  createOnlineRoom: (code, config) => {
-    const meta: RoomMeta = { id: code, mode: 'online', isHost: true, config, createdAt: Date.now() };
+  createOnlineRoom: (code, config, accountId) => {
+    const meta: RoomMeta = { id: code, mode: 'online', isHost: true, config, createdAt: Date.now(), boundAccountId: accountId };
     set((s) => ({ rooms: { ...s.rooms, [code]: meta } }));
     persist(meta);
   },
 
-  joinOnlineRoom: (code) => {
-    const meta: RoomMeta = { id: code, mode: 'online', isHost: false, createdAt: Date.now() };
+  joinOnlineRoom: (code, accountId) => {
+    const meta: RoomMeta = { id: code, mode: 'online', isHost: false, createdAt: Date.now(), boundAccountId: accountId };
     set((s) => ({ rooms: { ...s.rooms, [code]: meta } }));
     persist(meta);
   },
@@ -70,5 +88,9 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     const local = get().rooms[id];
     if (local) return local;
     return loadCached(id);
+  },
+
+  leaveActiveRoom: () => {
+    clearActiveRoom();
   },
 }));

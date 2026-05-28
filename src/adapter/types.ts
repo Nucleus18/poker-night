@@ -34,8 +34,14 @@ export interface IAdapter {
   /** Hero 切换秀牌偏好 */
   toggleShowCards(): void;
 
+  /** Hero 切换"准备"状态（仅在线房间有意义） */
+  toggleReady(): void;
+
   /** Hero 补码 */
   rebuy(): void;
+
+  /** 主动离开房间（联机：通知服务端清座；本地：no-op） */
+  leave?(): void;
 
   /** 清理资源（取消订阅、关闭连接、清定时器） */
   destroy(): void;

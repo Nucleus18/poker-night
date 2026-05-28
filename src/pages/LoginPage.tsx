@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuthStore } from '@/auth/store';
 import { BUILTIN_ACCOUNTS } from '@/auth/accounts';
@@ -6,17 +6,23 @@ import { BUILTIN_ACCOUNTS } from '@/auth/accounts';
 export default function LoginPage() {
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
-  const [id, setId] = useState('player01');
-  const [pwd, setPwd] = useState('poker01');
+  const [id, setId] = useState(BUILTIN_ACCOUNTS[0].id);
+  const [pwd, setPwd] = useState(BUILTIN_ACCOUNTS[0].password);
   const [err, setErr] = useState('');
-  const [showHint, setShowHint] = useState(false);
+
+  const onIdChange = (newId: string) => {
+    setId(newId);
+    const account = BUILTIN_ACCOUNTS.find((a) => a.id === newId);
+    if (account) setPwd(account.password);
+    setErr('');
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(id.trim(), pwd.trim())) {
+    if (login(id, pwd.trim())) {
       navigate('/');
     } else {
-      setErr('账号或密码不正确');
+      setErr('密码不正确');
     }
   };
 
@@ -31,35 +37,39 @@ export default function LoginPage() {
 
         <form onSubmit={submit} className="space-y-3">
           <div>
-            <label className="text-xs text-emerald-100/70 mb-1 block">账号</label>
-            <input className="input-base w-full" value={id} onChange={(e) => setId(e.target.value)} autoFocus />
+            <label className="text-xs text-emerald-100/70 mb-1 block">选择你的账号</label>
+            <select
+              className="input-base w-full"
+              value={id}
+              onChange={(e) => onIdChange(e.target.value)}
+            >
+              {BUILTIN_ACCOUNTS.map((a) => (
+                <option key={a.id} value={a.id}>{a.id} · {a.defaultName}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="text-xs text-emerald-100/70 mb-1 block">密码</label>
-            <input className="input-base w-full" type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} />
+            <input
+              className="input-base w-full"
+              type="password"
+              value={pwd}
+              onChange={(e) => { setPwd(e.target.value); setErr(''); }}
+              autoFocus
+            />
           </div>
           {err && <div className="text-red-400 text-xs">{err}</div>}
-          <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-lg tracking-wider transition-colors">
+          <button
+            type="submit"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-lg tracking-wider transition-colors"
+          >
             进入
           </button>
         </form>
 
-        <div className="mt-4 text-center">
-          <button onClick={() => setShowHint((v) => !v)} className="text-xs text-emerald-100/50 hover:text-emerald-300">
-            {showHint ? '隐藏' : '查看'} 10 个内置账号
-          </button>
+        <div className="mt-4 text-center text-[11px] text-emerald-100/40">
+          每个朋友各自挑一个账号 · 同一账号不可同时登录两处
         </div>
-
-        {showHint && (
-          <div className="mt-3 grid grid-cols-2 gap-1 text-[11px] text-emerald-100/70 bg-black/40 p-3 rounded-lg">
-            {BUILTIN_ACCOUNTS.map((a) => (
-              <div key={a.id} className="flex justify-between">
-                <span>{a.id}</span>
-                <span className="text-emerald-100/50">{a.password}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

@@ -28,8 +28,10 @@ type ClientMsg =
   | JoinPayload
   | ActionPayload
   | { type: 'startHand' }
+  | { type: 'toggleReady' }
   | { type: 'rebuy' }
-  | { type: 'toggleShow' };
+  | { type: 'toggleShow' }
+  | { type: 'leave' };
 
 type ServerMsg =
   | { type: 'state'; state: GameState; mySeatIdx: number }
@@ -63,8 +65,8 @@ export default class PokerRoom implements Party.Server {
 
   constructor(readonly room: Party.Room) {}
 
-  /** 创建初始 9 人座位（全部空位），等真人/AI 加入 */
-  private buildEmptyPlayers(config: RoomConfig): Player[] {
+  /** 创建初始 9 人座位（全部空位），等真人加入 */
+  private buildEmptyPlayers(_config: RoomConfig): Player[] {
     const players: Player[] = [];
     for (let i = 0; i < 9; i++) {
       players.push({
@@ -86,22 +88,8 @@ export default class PokerRoom implements Party.Server {
         rebuysLeft: 0,
         showCardsEnabled: false,
         revealCards: false,
+        ready: false,
       });
-    }
-    // host 创建时若指定 aiCount，补齐 AI（占在 1..aiCount 号位）
-    for (let i = 1; i <= config.aiCount && i <= 8; i++) {
-      players[i] = {
-        ...players[i],
-        accountId: `ai_${i}`,
-        name: PRESET_AI_NAMES[(i - 1) % PRESET_AI_NAMES.length],
-        avatar: `preset:${(i - 1) % 8}`,
-        colorPair: PRESET_AI_COLORS[(i - 1) % 8],
-        isAI: true,
-        stack: config.startingStack,
-        rebuysLeft: config.maxRebuys,
-        isSittingOut: false,
-        showCardsEnabled: Math.random() < 0.4,
-      };
     }
     return players;
   }
@@ -148,14 +136,32 @@ export default class PokerRoom implements Party.Server {
         break;
       }
       case 'startHand': {
-        // 仅 host 能开新一手；自动开新一手由 server 自己驱动，这里给客户端兜底
+        // 仅 host 能开新一手
         const acct = this.seatToAccount.get(seat);
-        if (acct === this.hostAccountId) {
-          this.state = startNewHand(this.state);
-          this.broadcastState();
-          this.scheduleAI();
-          this.scheduleTurnTimeout();
+        if (acct !== this.hostAccountId) return;
+        // 必须至少 2 个真人座位 ready
+        const realPlayers = this.state.players.filter((p) => !p.isSittingOut && !p.isAI && p.accountId);
+        if (realPlayers.length < 2) {
+          this.send(sender, { type: 'error', message: '至少需要 2 个真人玩家' });
+          return;
         }
+        const allReady = realPlayers.every((p) => p.ready);
+        if (!allReady) {
+          this.send(sender, { type: 'error', message: '还有玩家未准备' });
+          return;
+        }
+        this.state = startNewHand(this.state);
+        this.broadcastState();
+        this.scheduleAI();
+        this.scheduleTurnTimeout();
+        break;
+      }
+      case 'toggleReady': {
+        const p = this.state.players[seat];
+        const next = { ...this.state, players: this.state.players.map((pp) => ({ ...pp })) };
+        next.players[seat] = { ...p, ready: !p.ready };
+        this.state = next;
+        this.broadcastState();
         break;
       }
       case 'rebuy': {
@@ -168,6 +174,26 @@ export default class PokerRoom implements Party.Server {
         const next = { ...this.state, players: this.state.players.map((pp) => ({ ...pp })) };
         next.players[seat] = { ...p, showCardsEnabled: !p.showCardsEnabled };
         this.state = next;
+        this.broadcastState();
+        break;
+      }
+      case 'leave': {
+        // 主动离开：保留 stack/name 用于积分榜（hasLeft 标记），不再参与发牌
+        if (this.state.toActSeat === seat) {
+          this.dispatch(seat, 'fold');
+        }
+        const next = { ...this.state, players: this.state.players.map((pp) => ({ ...pp })) };
+        next.players[seat] = {
+          ...next.players[seat],
+          hasLeft: true,
+          isSittingOut: true,
+          ready: false,
+          // stack/name/accountId 保留：积分榜结算时仍能显示离开者最终筹码
+        };
+        this.state = next;
+        this.connToSeat.delete(sender.id);
+        this.seatToConn.delete(seat);
+        // 不删 seatToAccount：保留账号绑定，避免重连时被识别成新人占别的位置
         this.broadcastState();
         break;
       }
@@ -204,7 +230,7 @@ export default class PokerRoom implements Party.Server {
         return;
       }
       const players = this.buildEmptyPlayers(msg.config);
-      // host 占 0 号位
+      // host 占 0 号位，默认未准备（host 也要点准备）
       players[0] = {
         ...players[0],
         accountId: msg.user.id,
@@ -216,30 +242,41 @@ export default class PokerRoom implements Party.Server {
         stack: msg.config.startingStack,
         rebuysLeft: msg.config.maxRebuys,
         isSittingOut: false,
+        ready: false,
       };
-      this.state = createInitialState(players, msg.config);
+      this.state = createInitialState(players, msg.config, 0);
       this.hostAccountId = msg.user.id;
       this.connToSeat.set(sender.id, 0);
       this.seatToConn.set(0, sender.id);
       this.seatToAccount.set(0, msg.user.id);
-      // host 进来后立即开第一手
+      // host 进来不自动开手；等所有人准备后房主点开始
       this.send(sender, { type: 'state', state: this.viewFor(0), mySeatIdx: 0 });
-      setTimeout(() => {
-        if (!this.state) return;
-        this.state = startNewHand(this.state);
-        this.broadcastState();
-        this.scheduleAI();
-        this.scheduleTurnTimeout();
-      }, 500);
       return;
     }
 
-    // 后续加入者：检查是否已有该 accountId（重连场景）
+    // 后续加入者：检查是否已有该 accountId（重连 / 同账号挤占场景）
     let assignedSeat = -1;
     for (const [seat, acct] of this.seatToAccount) {
       if (acct === msg.user.id) {
         assignedSeat = seat;
         break;
+      }
+    }
+
+    // 同账号已经在线 → 挤占：关闭旧连接
+    if (assignedSeat !== -1) {
+      const oldConnId = this.seatToConn.get(assignedSeat);
+      if (oldConnId && oldConnId !== sender.id) {
+        for (const conn of this.room.getConnections()) {
+          if (conn.id === oldConnId) {
+            try {
+              this.send(conn, { type: 'error', message: '账号在别处登录' });
+              conn.close();
+            } catch { /* ignore */ }
+            this.connToSeat.delete(oldConnId);
+            break;
+          }
+        }
       }
     }
 
@@ -250,7 +287,7 @@ export default class PokerRoom implements Party.Server {
         this.send(sender, { type: 'error', message: '房间已满' });
         return;
       }
-      // 占座
+      // 占座（默认未准备，需要手动点准备）
       const next = { ...this.state, players: this.state.players.map((pp) => ({ ...pp })) };
       next.players[assignedSeat] = {
         ...next.players[assignedSeat],
@@ -262,6 +299,7 @@ export default class PokerRoom implements Party.Server {
         rebuysLeft: this.state.config.maxRebuys,
         isAI: false,
         isSittingOut: false,
+        ready: false,
       };
       this.state = next;
       this.seatToAccount.set(assignedSeat, msg.user.id);

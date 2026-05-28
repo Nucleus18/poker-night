@@ -14,7 +14,7 @@ import type { GameState, Player, Card, ActionKind, Pot } from './types';
 import { buildDeck, shuffle, cardToStr } from './deck';
 
 // ==================== 创建游戏状态 ====================
-export function createInitialState(players: Player[], config: GameState['config']): GameState {
+export function createInitialState(players: Player[], config: GameState['config'], hostSeatIdx: number = 0): GameState {
   return {
     config,
     players,
@@ -30,6 +30,8 @@ export function createInitialState(players: Player[], config: GameState['config'
     startedAt: Date.now(),
     endingAfterHand: false,
     finished: false,
+    waitingToStart: true,
+    hostSeatIdx,
   };
 }
 
@@ -44,6 +46,7 @@ export function startNewHand(state: GameState): GameState {
     s.minRaise = s.config.bigBlind;
     s.street = 'preflop';
     s.winners = undefined;
+    s.waitingToStart = false;
 
     // 重置玩家本手状态
     s.players.forEach((p) => {

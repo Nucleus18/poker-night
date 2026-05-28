@@ -44,6 +44,9 @@ export class LocalAdapter implements IAdapter {
     this.setState(next);
   }
 
+  /** 切换准备状态（本地恒为 true，无意义；保留接口给联机使用） */
+  toggleReady() { /* no-op for local */ }
+
   /** Hero 行动入口 */
   hero(kind: ActionKind, amount?: number) {
     if (this.state.toActSeat !== this.mySeatIdx) return;
@@ -138,6 +141,7 @@ export function buildPlayers(
     rebuysLeft: config.maxRebuys,
     showCardsEnabled: false,
     revealCards: false,
+    ready: true,
   });
 
   // 1..8 = AI 或空位
@@ -165,6 +169,7 @@ export function buildPlayers(
         rebuysLeft: config.maxRebuys,
         showCardsEnabled: aiShows,
         revealCards: false,
+        ready: true,
       });
     } else {
       players.push({
@@ -186,6 +191,7 @@ export function buildPlayers(
         rebuysLeft: 0,
         showCardsEnabled: false,
         revealCards: false,
+        ready: false,
       });
     }
   }
