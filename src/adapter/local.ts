@@ -85,7 +85,7 @@ export class LocalAdapter implements IAdapter {
     }, delay);
   }
 
-  /** Hero 切换"秀牌"偏好（整局有效） */
+  /** Hero 切换"本手秀牌"偏好 */
   toggleShowCards() {
     const next = { ...this.state, players: this.state.players.map((p) => ({ ...p })) };
     next.players[this.mySeatIdx] = { ...next.players[this.mySeatIdx], showCardsEnabled: !next.players[this.mySeatIdx].showCardsEnabled };

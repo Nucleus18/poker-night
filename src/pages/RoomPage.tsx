@@ -21,6 +21,7 @@ export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user)!;
   const getRoom = useRoomStore((s) => s.getRoom);
+  const joinOnlineRoom = useRoomStore((s) => s.joinOnlineRoom);
   const navigate = useNavigate();
   const room = id ? getRoom(id) : undefined;
 
@@ -38,6 +39,11 @@ export default function RoomPage() {
   // 初始化 adapter
   useEffect(() => {
     if (!room) {
+      // 已登录用户直接打开 6 位数字房间链接：默认按在线房间加入，不再踢回大厅
+      if (id && /^\d{6}$/.test(id)) {
+        joinOnlineRoom(id, user.id);
+        return;
+      }
       navigate('/');
       return;
     }
@@ -77,7 +83,7 @@ export default function RoomPage() {
 
     return () => { unsub(); adapter.destroy(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, room?.id]);
 
   // 倒计时：基于 gameStartedAt 时间戳算剩余，准备阶段（gameStartedAt 未设置）显示满时间
   useEffect(() => {
@@ -424,7 +430,7 @@ export default function RoomPage() {
               onClick={() => {
                 adapterRef.current?.toggleShowCards();
                 const next = !hero.showCardsEnabled;
-                setShowToast(next ? '已开启秀牌：本手结束时会展示你的手牌' : '已关闭秀牌：手牌将保持隐藏');
+                setShowToast(next ? '本手已开启秀牌：结算时会展示你的手牌' : '本手已关闭秀牌：结算时保持隐藏');
                 setTimeout(() => setShowToast(null), 2500);
               }}
               className="absolute z-[7] flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all"
@@ -437,7 +443,7 @@ export default function RoomPage() {
                   : '0 4px 10px rgba(0,0,0,0.5)',
                 color: hero.showCardsEnabled ? '#10b981' : '#9fdcc2',
               }}
-              title={hero.showCardsEnabled ? '点击关闭：手牌将隐藏' : '点击开启：本手结束时展示手牌'}
+              title={hero.showCardsEnabled ? '点击关闭：本手结算时隐藏' : '点击开启：本手结算时展示手牌'}
             >
               {hero.showCardsEnabled ? (
                 /* 睁眼图标 */

@@ -59,6 +59,8 @@ export function startNewHand(state: GameState): GameState {
       p.totalBetThisHand = 0;
       p.lastAction = undefined;
       p.revealCards = false;
+      // 秀牌是"每手"设置：每手开局默认不秀牌，玩家本手内可切换
+      p.showCardsEnabled = false;
     });
 
     // 找参与本手的玩家（有筹码、不破产、不离场）
