@@ -21,7 +21,7 @@ export default function LobbyPage() {
   }, [user.id]);
 
   const [mode, setMode] = useState<Mode>('local');
-  const [name, setName] = useState('朋友的局');
+  const [name, setName] = useState('在线房间1');
   const [smallBlind, setSmallBlind] = useState(2);
   const [bigBlind, setBigBlind] = useState(4);
   const [startingStack, setStartingStack] = useState(1600);

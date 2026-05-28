@@ -40,6 +40,8 @@ export interface Player {
   outOfChips: boolean;   // 真正的"破产，等补码或离场"标记
   isSittingOut: boolean; // 离场状态（不发牌）
   rebuysLeft: number;
+  totalBuyIn: number;    // 累计购入筹码（起始 + 所有补码），用于战绩盈亏
+  handsPlayed: number;   // 累计参与过的手数（用于战绩"局数"）
 
   // 秀牌开关（持久玩家偏好）
   showCardsEnabled: boolean;

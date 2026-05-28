@@ -86,6 +86,8 @@ export default class PokerRoom implements Party.Server {
         outOfChips: false,
         isSittingOut: true,
         rebuysLeft: 0,
+        totalBuyIn: 0,
+        handsPlayed: 0,
         showCardsEnabled: false,
         revealCards: false,
         ready: false,
@@ -190,6 +192,18 @@ export default class PokerRoom implements Party.Server {
           ready: false,
           // stack/name/accountId 保留：积分榜结算时仍能显示离开者最终筹码
         };
+
+        // 房主转移：如果是房主离开，立即把房主权移给下一个仍在场的真人
+        if (seat === next.hostSeatIdx) {
+          const newHost = next.players.find((p) =>
+            p.accountId && !p.hasLeft && !p.isSittingOut && !p.isAI && p.seatIdx !== seat,
+          );
+          if (newHost) {
+            next.hostSeatIdx = newHost.seatIdx;
+            this.hostAccountId = newHost.accountId;
+          }
+        }
+
         this.state = next;
         this.connToSeat.delete(sender.id);
         this.seatToConn.delete(seat);
@@ -252,6 +266,8 @@ export default class PokerRoom implements Party.Server {
         isHero: false,
         stack: msg.config.startingStack,
         rebuysLeft: msg.config.maxRebuys,
+        totalBuyIn: msg.config.startingStack,
+        handsPlayed: 0,
         isSittingOut: false,
         ready: false,
       };
@@ -308,6 +324,8 @@ export default class PokerRoom implements Party.Server {
         colorPair: msg.user.colorPair,
         stack: this.state.config.startingStack,
         rebuysLeft: this.state.config.maxRebuys,
+        totalBuyIn: this.state.config.startingStack,
+        handsPlayed: 0,
         isAI: false,
         isSittingOut: false,
         ready: false,

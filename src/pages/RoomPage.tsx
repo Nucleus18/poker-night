@@ -15,6 +15,7 @@ import BestHand from '@/components/BestHand';
 import BetPanel, { ActionScenario } from '@/components/BetPanel';
 import { getSeatPosition, getBetChipPosition, getDealerPosition } from '@/components/seatPositions';
 import Leaderboard from '@/components/Leaderboard';
+import Standings from '@/components/Standings';
 
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +31,7 @@ export default function RoomPage() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [rebuyOffered, setRebuyOffered] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
+  const [showStandings, setShowStandings] = useState(false);
   const [connStatus, setConnStatus] = useState<ConnectionStatus>('open');
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
@@ -229,6 +231,13 @@ export default function RoomPage() {
             title="退出房间"
           >
             退出房间
+          </button>
+          <button
+            onClick={() => setShowStandings(true)}
+            className="pill"
+            title="查看本房间积分排行"
+          >
+            战绩
           </button>
         </div>
         <div className="flex flex-col items-center gap-0.5">
@@ -700,8 +709,18 @@ export default function RoomPage() {
       {showLeaderboard && (
         <Leaderboard
           state={state}
+          myAccountId={user.id}
           onRestart={() => { setShowLeaderboard(false); navigate('/'); }}
           onExit={() => navigate('/')}
+        />
+      )}
+
+      {/* 战绩面板（盈亏排行） */}
+      {showStandings && (
+        <Standings
+          players={state.players}
+          myAccountId={user.id}
+          onClose={() => setShowStandings(false)}
         />
       )}
     </div>

@@ -68,6 +68,9 @@ export function startNewHand(state: GameState): GameState {
       return;
     }
 
+    // 累计参与的手数（用于战绩"局数"）
+    eligible.forEach((p) => { p.handsPlayed = (p.handsPlayed || 0) + 1; });
+
     // Button 移动
     s.buttonSeat = nextEligibleSeat(s, s.buttonSeat);
 
@@ -454,6 +457,7 @@ export function rebuyPlayer(state: GameState, seatIdx: number): GameState {
       p.stack = s.config.rebuyAmount;
       p.outOfChips = false;
       p.rebuysLeft -= 1;
+      p.totalBuyIn = (p.totalBuyIn || 0) + s.config.rebuyAmount;
     }
   });
 }
