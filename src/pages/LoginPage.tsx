@@ -5,6 +5,8 @@ import { BUILTIN_ACCOUNTS } from '@/auth/accounts';
 
 export default function LoginPage() {
   const login = useAuthStore((s) => s.login);
+  const kickedReason = useAuthStore((s) => s.kickedReason);
+  const clearKicked = useAuthStore((s) => s.clearKicked);
   const navigate = useNavigate();
   const [id, setId] = useState(BUILTIN_ACCOUNTS[0].id);
   const [pwd, setPwd] = useState(BUILTIN_ACCOUNTS[0].password);
@@ -19,6 +21,7 @@ export default function LoginPage() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    clearKicked();
     if (login(id, pwd.trim())) {
       navigate('/');
     } else {
@@ -36,6 +39,11 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={submit} className="space-y-3">
+          {kickedReason && (
+            <div className="text-amber-300 text-xs bg-amber-500/10 border border-amber-500/30 rounded p-2.5">
+              你已被强制下线：{kickedReason}
+            </div>
+          )}
           <div>
             <label className="text-xs text-emerald-100/70 mb-1 block">选择你的账号</label>
             <select

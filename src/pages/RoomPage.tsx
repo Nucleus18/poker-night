@@ -77,12 +77,23 @@ export default function RoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // 倒计时（暂停状态下停止）
+  // 倒计时：基于 gameStartedAt 时间戳算剩余，准备阶段（gameStartedAt 未设置）显示满时间
   useEffect(() => {
     if (!state) return;
     if (showLeaderboard) return;
-    if (state.waitingToStart) return;  // paused / 等待大厅时不走时
-    const t = setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+    const total = (state.config?.durationMin ?? 60) * 60;
+    const tick = () => {
+      if (!state.gameStartedAt) {
+        setSecondsLeft(total);
+        return;
+      }
+      // paused 时也走时（暂停的代价是占用游戏时间，但避免有人卡着不开始）
+      // 如果你想 paused 不走时，用 state.waitingToStart 提前 return
+      const elapsed = Math.floor((Date.now() - state.gameStartedAt) / 1000);
+      setSecondsLeft(Math.max(0, total - elapsed));
+    };
+    tick();
+    const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [state, showLeaderboard]);
 

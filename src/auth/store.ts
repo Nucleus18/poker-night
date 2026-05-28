@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { findAccount } from './accounts';
+import { connectPresence, disconnectPresence } from './presence';
 
 export interface UserProfile {
   id: string;            // 账号 id
@@ -10,8 +11,11 @@ export interface UserProfile {
 
 interface AuthState {
   user: UserProfile | null;
+  kickedReason: string | null;  // 被踢下线时的原因，UI 用来展示提示
   login: (id: string, password: string) => boolean;
   logout: () => void;
+  forceKickedOut: (reason: string) => void;
+  clearKicked: () => void;
   updateProfile: (patch: Partial<UserProfile>) => void;
 }
 
@@ -52,6 +56,7 @@ const PRESET_COLORS: [string, string][] = [
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: loadCurrent(),
+  kickedReason: null,
 
   login: (id, password) => {
     const account = findAccount(id, password);
@@ -68,13 +73,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       saveProfiles(profiles);
     }
     localStorage.setItem(SESSION_KEY, id);
-    set({ user: profiles[id] });
+    set({ user: profiles[id], kickedReason: null });
+    // 占据全局在线槽
+    connectPresence(id, (reason) => {
+      // 被别处登录踢下线
+      get().forceKickedOut(reason);
+    });
     return true;
   },
 
   logout: () => {
+    disconnectPresence();
     localStorage.removeItem(SESSION_KEY);
-    set({ user: null });
+    set({ user: null, kickedReason: null });
+  },
+
+  forceKickedOut: (reason) => {
+    disconnectPresence();
+    localStorage.removeItem(SESSION_KEY);
+    set({ user: null, kickedReason: reason });
+  },
+
+  clearKicked: () => {
+    set({ kickedReason: null });
   },
 
   updateProfile: (patch) => {
@@ -87,5 +108,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user: next });
   },
 }));
+
+// 应用启动时若已有登录态，直接连 presence 占槽
+if (typeof window !== 'undefined') {
+  const cur = loadCurrent();
+  if (cur) {
+    connectPresence(cur.id, (reason) => {
+      useAuthStore.getState().forceKickedOut(reason);
+    });
+  }
+}
 
 export { PRESET_COLORS };

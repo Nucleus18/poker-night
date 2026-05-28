@@ -47,6 +47,8 @@ export function startNewHand(state: GameState): GameState {
     s.street = 'preflop';
     s.winners = undefined;
     s.waitingToStart = false;
+    // 第一手真正发牌时记录倒计时基准；后续手不重置
+    if (!s.gameStartedAt) s.gameStartedAt = Date.now();
 
     // 重置玩家本手状态
     s.players.forEach((p) => {

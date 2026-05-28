@@ -80,7 +80,8 @@ export interface GameState {
   buttonSeat: number;     // dealer 位
   toActSeat: number;      // 当前要行动的座位（-1 表示无）
   handNumber: number;
-  startedAt: number;      // ms
+  startedAt: number;      // ms：房间创建时间
+  gameStartedAt?: number; // ms：第一手真正发牌的时间（用于倒计时基准）
   endingAfterHand: boolean; // 限时到了，本手打完结束
   finished: boolean;
   // 等待房主开始游戏阶段（仅在线房间）：true 表示还没开第一手
