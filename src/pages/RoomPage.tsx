@@ -125,8 +125,8 @@ export default function RoomPage() {
       const t = setTimeout(() => {
         if (state.endingAfterHand) {
           setShowLeaderboard(true);
-        } else {
-          // 自动开下一手（如果 hero 没破产或已补码）
+        } else if (room?.mode === 'local') {
+          // 本地模式由客户端驱动下一手；联机模式由 PartyKit 服务端驱动，避免重复 startHand 导致局数虚高
           const me = state.players[adapterRef.current?.mySeatIdx ?? 0];
           if (me.outOfChips && me.rebuysLeft > 0) {
             setRebuyOffered(true);
@@ -404,7 +404,7 @@ export default function RoomPage() {
               </div>
               {hero.hasFolded && !hero.revealCards && (
                 <div
-                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 px-2.5 py-1 rounded text-[11px] font-bold tracking-widest"
+                  className="absolute left-1/2 -bottom-7 -translate-x-1/2 px-2.5 py-1 rounded text-[11px] font-bold tracking-widest whitespace-nowrap"
                   style={{
                     background: 'rgba(0,0,0,0.85)',
                     color: '#ff8585',

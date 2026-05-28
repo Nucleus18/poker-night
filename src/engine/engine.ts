@@ -68,9 +68,6 @@ export function startNewHand(state: GameState): GameState {
       return;
     }
 
-    // 累计参与的手数（用于战绩"局数"）
-    eligible.forEach((p) => { p.handsPlayed = (p.handsPlayed || 0) + 1; });
-
     // Button 移动
     s.buttonSeat = nextEligibleSeat(s, s.buttonSeat);
 
@@ -359,6 +356,14 @@ function finalizeHand(s: GameState) {
   s.players.forEach((p) => { p.betThisRound = 0; });
 
   s.street = 'showdown';
+
+  // 一手牌真正结算时才统计局数：所有本手发过牌的玩家（包括已 fold）各 +1
+  // 注意不要在 startNewHand 统计，否则重复 start / 服务端与客户端竞态会导致虚高。
+  s.players.forEach((p) => {
+    if (p.accountId && p.holeCards.length === 2) {
+      p.handsPlayed = (p.handsPlayed || 0) + 1;
+    }
+  });
 
   const alive = s.players.filter((p) => !p.hasFolded);
   const winners: { seatIdx: number; amount: number; handDescription?: string }[] = [];
