@@ -174,11 +174,13 @@ export default class PokerRoom implements Party.Server {
         break;
       }
       case 'rebuy': {
+        const before = this.state.players[seat]?.stack ?? 0;
         this.state = rebuyPlayer(this.state, seat);
         this.broadcastState();
-        // 已开局后没有"重新准备/开始"流程：如果当前因人数不足或破产处于等待，
+        const after = this.state.players[seat]?.stack ?? 0;
+        // 已开局后没有“重新准备/开始”流程：如果当前因人数不足或破产处于等待，
         // 补码成功后立即尝试自动续下一手。
-        if (this.state.handNumber > 0 && (this.state.street === 'idle' || (this.state.street as any) === 'paused')) {
+        if (after > before && this.state.handNumber > 0 && (this.state.street === 'idle' || (this.state.street as any) === 'paused')) {
           this.tryStartNextHand();
         }
         break;
@@ -423,10 +425,15 @@ export default class PokerRoom implements Party.Server {
 
   private scheduleNextHandAfterShowdown(state: GameState) {
     const isMultiway = state.players.filter((p) => !p.hasFolded).length > 1;
-    const runExtra = state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1 ? 2500 : 0;
+    const runCount = state.runIt?.status === 'complete' ? (state.runIt.runCount || 1) : 1;
+    const remainingRunCards = Math.max(0, 5 - (state.runIt?.baseCommunity.length ?? state.community.length));
+    // 必须和前端逐条 RUN / 逐张牌展示节奏保持一致，否则服务端会过早开下一手，
+    // 看起来就像跑马没有多次发牌、直接结算。
+    const runExtra = runCount > 1 ? runCount * (remainingRunCards * 420 + 1300) + 700 : 0;
     const dur = (isMultiway ? 5000 : 4000) + runExtra;
     setTimeout(() => {
       if (!this.state) return;
+      if (this.state.handNumber !== state.handNumber) return;
       if (this.state.endingAfterHand) return;
       this.tryStartNextHand();
     }, dur);

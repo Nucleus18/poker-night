@@ -714,9 +714,9 @@ export default function RoomPage() {
                 isWinner={showdownReady && !!payout}
                 handLabel={showdownReady && !p.hasFolded ? handLabels[p.seatIdx] : undefined}
                 position={pos}
-                rebuyAmount={p.seatIdx === mySeatIdx && p.outOfChips && p.rebuysLeft > 0 ? (state.config?.rebuyAmount ?? 0) : undefined}
+                rebuyAmount={p.seatIdx === mySeatIdx && (p.outOfChips || p.stack === 0) && p.rebuysLeft > 0 ? (state.config?.rebuyAmount ?? 0) : undefined}
                 rebuysLeft={p.seatIdx === mySeatIdx ? p.rebuysLeft : undefined}
-                onRebuy={p.seatIdx === mySeatIdx && p.outOfChips && p.rebuysLeft > 0 ? () => {
+                onRebuy={p.seatIdx === mySeatIdx && (p.outOfChips || p.stack === 0) && p.rebuysLeft > 0 ? () => {
                   adapterRef.current?.rebuy();
                   // 本地模式只有在非进行中状态才自动开下一手。
                   // 如果其他玩家正在打当前手，补码只补到自己的 stack，等本手自然结束后再参与下一手。

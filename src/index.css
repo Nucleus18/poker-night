@@ -195,13 +195,13 @@ body {
 }
 .playing-card-front {
   background:
-    linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(244,244,240,0.96) 48%, rgba(226,226,218,0.98) 100%);
-  border: 1px solid rgba(20,20,20,0.18);
+    linear-gradient(180deg, #ffffff 0%, #f7f7f2 58%, #e7e3d7 100%);
+  border: 1px solid rgba(18,18,18,0.2);
 }
 .playing-card-front::before {
   content: '';
   position: absolute;
-  inset: 4px;
+  inset: 3px;
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 5px;
   pointer-events: none;
@@ -210,8 +210,30 @@ body {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.78), transparent 36%);
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255,255,255,0.84), transparent 32%),
+    linear-gradient(160deg, rgba(255,255,255,0.35), transparent 56%);
   pointer-events: none;
+}
+.playing-card-front-face {
+  background:
+    linear-gradient(180deg, #fffefe 0%, #f5f2e7 62%, #ded6c2 100%);
+}
+.playing-card-front-asset {
+  background: transparent;
+  border: 0;
+}
+.playing-card-front-asset::before,
+.playing-card-front-asset::after {
+  display: none;
+}
+.card-asset-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 .playing-card-back {
   background: linear-gradient(135deg, #17385d, #08192d 58%, #06101f);
@@ -267,28 +289,90 @@ body {
 }
 .card-corner {
   position: absolute;
-  z-index: 1;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
-  font-family: 'Cinzel', serif;
-  font-weight: 700;
-  line-height: 0.82;
-  text-shadow: 0 0.5px 0 rgba(255,255,255,0.35);
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-weight: 800;
+  line-height: 0.84;
+  text-shadow: 0 0.5px 0 rgba(255,255,255,0.45);
 }
 .card-corner-tl { left: 6px; top: 6px; }
-.card-corner-br { right: 6px; bottom: 6px; transform: rotate(180deg); }
 .card-rank { letter-spacing: -1px; }
+.card-suit-small { margin-top: 1px; line-height: 0.9; }
 .card-center-mark {
   position: absolute;
-  left: 50%;
-  top: 52%;
+  left: 54%;
+  top: 61%;
   transform: translate(-50%, -50%);
   z-index: 1;
-  font-family: 'Cinzel', serif;
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
   line-height: 1;
-  opacity: 0.96;
-  filter: drop-shadow(0 1px 0 rgba(255,255,255,0.4));
+  opacity: 0.98;
+  filter: drop-shadow(0 1px 0 rgba(255,255,255,0.45));
+}
+.card-center-mark-face {
+  top: 64%;
+  opacity: 0.18;
+  transform: translate(-50%, -50%) scale(1.25);
+}
+.card-face-art {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  z-index: 2;
+  width: 58%;
+  height: 62%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.18));
+}
+.card-face-crown {
+  font-size: 0.52em;
+  line-height: 1;
+  color: #d4a717;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+}
+.card-face-head {
+  width: 42%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  margin-top: -1px;
+  background: linear-gradient(180deg, #f7c7a4, #c17a58);
+  border: 1px solid rgba(75,40,25,0.38);
+}
+.card-face-body {
+  width: 70%;
+  height: 36%;
+  margin-top: -1px;
+  border-radius: 45% 45% 12% 12%;
+  background:
+    linear-gradient(90deg, transparent 0 16%, rgba(255,255,255,0.82) 16% 23%, transparent 23% 77%, rgba(255,255,255,0.82) 77% 84%, transparent 84%),
+    linear-gradient(135deg, #1c376d 0 50%, #c42a35 50% 100%);
+  border: 1px solid rgba(20,20,20,0.22);
+}
+.card-face-label {
+  margin-top: 1px;
+  padding: 1px 3px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.72);
+  font: 700 0.22em/1 ui-serif, Georgia, serif;
+  letter-spacing: 0.04em;
+  color: rgba(25,25,25,0.82);
+}
+.card-face-q .card-face-body {
+  background:
+    linear-gradient(90deg, transparent 0 18%, rgba(255,255,255,0.86) 18% 25%, transparent 25% 75%, rgba(255,255,255,0.86) 75% 82%, transparent 82%),
+    linear-gradient(135deg, #7a235e 0 50%, #dfb43c 50% 100%);
+}
+.card-face-k .card-face-body {
+  background:
+    linear-gradient(90deg, transparent 0 16%, rgba(255,255,255,0.82) 16% 23%, transparent 23% 77%, rgba(255,255,255,0.82) 77% 84%, transparent 84%),
+    linear-gradient(135deg, #173c76 0 50%, #d2a51e 50% 100%);
 }
 
 @keyframes payoutPulse {

@@ -577,9 +577,16 @@ export function getMinRaiseTo(state: GameState, seatIdx: number): number {
 export function rebuyPlayer(state: GameState, seatIdx: number): GameState {
   return produce(state, (s) => {
     const p = s.players[seatIdx];
-    if (p.rebuysLeft > 0 && p.outOfChips) {
+    if (!p || p.rebuysLeft <= 0 || p.hasLeft) return;
+    // 在线对战中玩家可能已经 stack=0，但 outOfChips 标记还没随视图/结算同步到客户端；
+    // 补码应以“当前无筹码”为准，而不是强依赖 outOfChips 标记。
+    if (p.outOfChips || p.stack === 0) {
       p.stack = s.config.rebuyAmount;
       p.outOfChips = false;
+      p.isAllIn = false;
+      p.betThisRound = 0;
+      p.lastAction = undefined;
+      p.visualAction = undefined;
       p.rebuysLeft -= 1;
       p.totalBuyIn = (p.totalBuyIn || 0) + s.config.rebuyAmount;
     }

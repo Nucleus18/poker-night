@@ -1,4 +1,5 @@
 import type { Player } from '@/engine/types';
+import PlayingCard from '@/components/PlayingCard';
 
 const REACTIONS: Record<string, { alt: string; code: string }> = {
   wink: { alt: '😉', code: '1f609' },
@@ -131,46 +132,19 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
               const card = player.holeCards[i];
               const rot = i === 0 ? -10 : 10;
               const tx = i === 0 ? 10 : -10;
-              const isRed = revealCards && (card.suit === 'h' || card.suit === 'd');
-
-              if (revealCards) {
-                // 翻开后大尺寸：44 × 60，便于看清
-                return (
-                  <div
-                    key={i}
-                    style={{ transform: `rotate(${rot}deg) translateX(${tx}px)`, transition: 'transform 0.4s' }}
-                    className="relative"
-                  >
-                    <div
-                      className="opponent-card-reveal w-[44px] h-[60px] rounded-md bg-white border border-black/15 flex flex-col items-center justify-start pt-1 leading-none"
-                      style={{
-                        boxShadow: '0 6px 14px rgba(0,0,0,0.6), 0 0 12px rgba(212,175,55,0.4)',
-                        animation: 'cardFlip 0.5s ease-out',
-                      }}
-                    >
-                      <span className="font-cinzel text-[16px] font-semibold self-start ml-1" style={{ color: isRed ? '#d12d2d' : '#1a1a1a' }}>
-                        {card.rank}
-                      </span>
-                      <span className="text-[22px] mt-1" style={{ color: isRed ? '#d12d2d' : '#1a1a1a' }}>
-                        {card.suit === 'h' ? '♥' : card.suit === 'd' ? '♦' : card.suit === 'c' ? '♣' : '♠'}
-                      </span>
-                    </div>
-                  </div>
-                );
-              }
 
               return (
-                  <div
-                    key={i}
-                    style={{
-                      transform: `rotate(${rot}deg) translateX(${tx}px)`,
-                      transition: 'transform 0.4s',
-                      animationDelay: `${i * 120}ms`,
-                    }}
-                    className="opponent-card-back relative"
-                  >
-                    <div className="w-6 h-9 rounded bg-gradient-to-br from-[#1e3a5f] to-[#0c1a2e] border border-white/10 shadow-md"></div>
-                  </div>
+                <div
+                  key={i}
+                  style={{
+                    transform: `rotate(${rot}deg) translateX(${tx}px)`,
+                    transition: 'transform 0.4s',
+                    animationDelay: `${i * 120}ms`,
+                  }}
+                  className={revealCards ? 'opponent-card-reveal relative' : 'opponent-card-back relative'}
+                >
+                  <PlayingCard card={revealCards ? card : undefined} faceDown={!revealCards} size={revealCards ? 'table' : 'sm'} />
+                </div>
               );
             })}
           </div>
