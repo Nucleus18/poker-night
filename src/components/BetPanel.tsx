@@ -98,12 +98,12 @@ export default function BetPanel(props: BetPanelProps) {
   const panelDisabled = scenario === 'allin' || maxBet < minBet;
 
   return (
-    <div className="flex flex-col items-center gap-3 w-full">
+    <div className="bet-panel flex flex-col items-center gap-3 w-full">
       <div
-        className={`flex items-center gap-3.5 bg-[rgba(8,18,14,0.85)] border border-emerald-500/25 rounded-2xl px-4 py-2.5 backdrop-blur-md transition-opacity ${panelDisabled ? 'opacity-40 pointer-events-none' : ''}`}
+        className={`bet-amount-panel flex items-center gap-3.5 bg-[rgba(8,18,14,0.85)] border border-emerald-500/25 rounded-2xl px-4 py-2.5 backdrop-blur-md transition-opacity ${panelDisabled ? 'opacity-40 pointer-events-none' : ''}`}
       >
         {/* Stepper */}
-        <div className="flex items-center bg-black/50 border border-white/10 rounded-lg overflow-hidden">
+        <div className="bet-stepper flex items-center bg-black/50 border border-white/10 rounded-lg overflow-hidden">
           <button onClick={() => setVal(value - step)} className="w-7 h-9 text-emerald-100/80 hover:bg-emerald-500/15 hover:text-emerald-400 text-base font-semibold">−</button>
           <span className="text-emerald-100/60 px-1 text-[13px]">$</span>
           <input
@@ -119,7 +119,7 @@ export default function BetPanel(props: BetPanelProps) {
         </div>
 
         {/* Slider */}
-        <div className="relative flex-1 min-w-[280px] max-w-[420px] h-9 flex items-center">
+        <div className="bet-slider relative flex-1 min-w-[280px] max-w-[420px] h-9 flex items-center">
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 bg-white/10 rounded"></div>
           <div
             className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded shadow-[0_0_8px_rgba(16,185,129,0.5)]"
@@ -147,7 +147,7 @@ export default function BetPanel(props: BetPanelProps) {
         </div>
 
         {/* Quick bets */}
-        <div className="flex gap-1.5">
+        <div className="quick-bets flex gap-1.5">
           {quickOpts.map((q) => (
             <button
               key={q.key}
@@ -168,7 +168,7 @@ export default function BetPanel(props: BetPanelProps) {
       </div>
 
       {/* 主按钮 */}
-      <div className="flex gap-3">
+      <div className="action-buttons flex gap-3">
         <button onClick={onFold} className="btn-action btn-fold-style">
           <span className="text-[13px] tracking-[1.5px]">FOLD</span>
         </button>

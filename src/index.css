@@ -184,3 +184,147 @@ body {
     opacity: 0;
   }
 }
+
+/* ==================== 响应式牌桌（移动端横竖屏） ==================== */
+.poker-stage {
+  width: min(1200px, 94vw);
+  height: min(680px, 80vh);
+}
+
+/* 横屏手机：压缩顶栏和底部操作区，把桌面留在中间 */
+@media (max-height: 520px) and (orientation: landscape) {
+  .room-header {
+    height: 42px !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  .room-header .font-cinzel { font-size: 12px !important; letter-spacing: 2px !important; }
+  .room-header .pill,
+  .room-header button,
+  .room-header .bg-white\/\[0\.06\] {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+  .table-wrap { padding-top: 34px !important; align-items: flex-start !important; }
+  .poker-stage {
+    width: 98vw;
+    height: calc(100vh - 138px);
+    min-height: 220px;
+  }
+  .seat-root {
+    --seat-width: 74px;
+    transform: translate(-50%, -50%) scale(0.68) !important;
+    transform-origin: center center;
+  }
+  .seat-avatar { width: 60px !important; height: 60px !important; }
+  .seat-tag { min-width: 82px !important; padding: 3px 7px !important; }
+  .seat-tag div:first-child { font-size: 10px !important; max-width: 78px !important; }
+  .seat-tag div:nth-child(2) { font-size: 11px !important; }
+  .community-cards { gap: 6px !important; transform: translate(-50%, -50%) scale(0.72) !important; }
+  .hero-hand { bottom: 9% !important; transform: translateX(-50%) scale(0.72) !important; }
+  .show-toggle { bottom: 10% !important; right: 18% !important; transform: scale(0.78); transform-origin: center; }
+  .action-bar { padding: 6px 8px 8px !important; }
+  .bet-panel { gap: 6px !important; }
+  .bet-amount-panel {
+    width: min(96vw, 720px);
+    padding: 6px 8px !important;
+    gap: 8px !important;
+  }
+  .bet-stepper input { width: 76px !important; font-size: 13px !important; }
+  .bet-stepper button { width: 24px !important; height: 32px !important; }
+  .bet-slider { min-width: 180px !important; max-width: 260px !important; }
+  .quick-bets button { min-width: 48px !important; padding: 4px 6px !important; font-size: 10px !important; }
+  .quick-bets button div { display: none; }
+  .action-buttons { gap: 8px !important; }
+  .btn-action { min-width: 98px !important; height: 44px !important; padding: 0 10px !important; }
+  .btn-action span:first-child { font-size: 11px !important; }
+  .btn-action span:nth-child(2) { font-size: 13px !important; }
+  .waiting-overlay { bottom: 88px !important; transform: translateX(-50%) scale(0.86); transform-origin: bottom center; }
+}
+
+/* 竖屏手机：桌面缩小，上方信息紧凑，下注区改为多行 */
+@media (max-width: 640px) and (orientation: portrait) {
+  body { overflow: hidden; }
+  .room-header {
+    height: 88px !important;
+    padding: 8px 10px !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+    flex-wrap: wrap;
+  }
+  .room-header > div:first-child,
+  .room-header > div:last-child {
+    flex: 1 1 100%;
+    justify-content: center;
+    gap: 6px !important;
+  }
+  .room-header > div:nth-child(2) {
+    position: absolute;
+    left: 50%; top: 33px;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .room-header .font-cinzel { display: none; }
+  .room-header .pill,
+  .room-header button,
+  .room-header .bg-white\/\[0\.06\] {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+  .table-wrap { padding-top: 92px !important; align-items: flex-start !important; }
+  .poker-stage {
+    width: 100vw;
+    height: min(58vh, 520px);
+    min-height: 360px;
+  }
+  .seat-root {
+    --seat-width: 68px;
+    transform: translate(-50%, -50%) scale(0.62) !important;
+    transform-origin: center center;
+  }
+  .seat-avatar { width: 58px !important; height: 58px !important; }
+  .seat-tag { min-width: 78px !important; padding: 3px 6px !important; }
+  .seat-tag div:first-child { font-size: 10px !important; max-width: 74px !important; }
+  .seat-tag div:nth-child(2) { font-size: 11px !important; }
+  .community-cards { gap: 5px !important; transform: translate(-50%, -50%) scale(0.62) !important; }
+  .hero-hand { bottom: 6% !important; transform: translateX(-50%) scale(0.68) !important; }
+  .show-toggle { bottom: 8% !important; right: 12% !important; transform: scale(0.7); transform-origin: center; }
+  .action-bar { padding: 8px 8px calc(8px + env(safe-area-inset-bottom)) !important; }
+  .bet-panel { gap: 7px !important; }
+  .bet-amount-panel {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 8px !important;
+    gap: 8px !important;
+    border-radius: 14px !important;
+  }
+  .bet-stepper { order: 1; }
+  .bet-stepper input { width: 82px !important; font-size: 13px !important; }
+  .bet-slider { order: 2; min-width: 52vw !important; max-width: 52vw !important; }
+  .quick-bets {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .quick-bets button { min-width: 54px !important; padding: 4px 6px !important; font-size: 10px !important; }
+  .quick-bets button div { display: none; }
+  .action-buttons { width: 100%; gap: 7px !important; justify-content: center; }
+  .btn-action {
+    min-width: 31vw !important;
+    height: 48px !important;
+    padding: 0 6px !important;
+    border-radius: 9px !important;
+  }
+  .btn-action span:first-child { font-size: 11px !important; letter-spacing: 1px !important; }
+  .btn-action span:nth-child(2) { font-size: 13px !important; }
+  .waiting-overlay { bottom: 170px !important; transform: translateX(-50%) scale(0.86); transform-origin: bottom center; }
+}
+
+/* 小屏通用：避免一些浮层太宽 */
+@media (max-width: 640px) {
+  .fixed.left-4 { left: 8px !important; }
+}
+

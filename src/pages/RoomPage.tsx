@@ -218,9 +218,9 @@ export default function RoomPage() {
   const minRaiseTo = getMinRaiseTo(state, mySeatIdx);
 
   return (
-    <div className="h-full w-full flex flex-col">
+    <div className="room-root h-full w-full flex flex-col">
       {/* 顶栏 */}
-      <header className="fixed top-0 left-0 right-0 h-14 px-6 flex items-center justify-between z-50" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0))' }}>
+      <header className="room-header fixed top-0 left-0 right-0 h-14 px-6 flex items-center justify-between z-50" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0))' }}>
         <div className="flex gap-3 items-center">
           <div className="font-cinzel tracking-[4px] text-emerald-100/90 text-base">POKER NIGHT</div>
           <button
@@ -280,8 +280,8 @@ export default function RoomPage() {
       </header>
 
       {/* 牌桌舞台 */}
-      <div className="flex-1 flex items-center justify-center pt-12">
-        <div className="relative" style={{ width: 'min(1200px, 94vw)', height: 'min(680px, 80vh)' }}>
+      <div className="table-wrap flex-1 flex items-center justify-center pt-12">
+        <div className="poker-stage relative">
           {/* 桌面分层 */}
           <div className="absolute" style={{ inset: '6% 4% -2% 4%', borderRadius: 9999, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.7), rgba(0,0,0,0.3) 50%, transparent 75%)', filter: 'blur(20px)' }}></div>
           <div className="absolute rail-bg" style={{ inset: '6% 5%', borderRadius: 9999 }}></div>
@@ -298,7 +298,7 @@ export default function RoomPage() {
           </div>
 
           {/* 公共牌 */}
-          <div className="absolute flex gap-2.5" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+          <div className="community-cards absolute flex gap-2.5" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
             {[0, 1, 2, 3, 4].map((i) => {
               const card = state.community[i];
               if (!card) return <PlayingCard key={i} faceDown />;
@@ -372,7 +372,7 @@ export default function RoomPage() {
           {/* Hero 手牌：fold 后保留显示（灰阶+半透明），到下一手才清除 */}
           {hero.holeCards.length === 2 && (
             <div
-              className="absolute flex z-[6]"
+              className="hero-hand absolute flex z-[6]"
               style={{
                 bottom: '14%',
                 left: '50%',
@@ -433,8 +433,8 @@ export default function RoomPage() {
                 setShowToast(next ? '本手已开启秀牌：结算时会展示你的手牌' : '本手已关闭秀牌：结算时保持隐藏');
                 setTimeout(() => setShowToast(null), 2500);
               }}
-              className="absolute z-[7] flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all"
-              style={{
+              className="show-toggle absolute z-[7] flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all"
+              style={{ 
                 bottom: '16%', right: '24%',
                 background: hero.showCardsEnabled ? 'rgba(16,185,129,0.18)' : 'rgba(20,20,20,0.7)',
                 border: `1.5px solid ${hero.showCardsEnabled ? '#10b981' : 'rgba(255,255,255,0.15)'}`,
@@ -566,7 +566,7 @@ export default function RoomPage() {
         const enoughPlayers = realPlayers.length >= 2;
         const isHost = state.hostSeatIdx === mySeatIdx;
         return (
-          <div className="fixed left-1/2 -translate-x-1/2 z-[55] flex flex-col items-center gap-3" style={{ bottom: 200 }}>
+          <div className="waiting-overlay fixed left-1/2 -translate-x-1/2 z-[55] flex flex-col items-center gap-3" style={{ bottom: 200 }}>
             <div
               className="px-5 py-3 rounded-xl backdrop-blur-md text-center"
               style={{
@@ -650,7 +650,7 @@ export default function RoomPage() {
 
       {/* 底部行动区 */}
       {!state.waitingToStart && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 px-6 py-4" style={{ background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.85))' }}>
+        <div className="action-bar fixed bottom-0 left-0 right-0 z-40 px-6 py-4" style={{ background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.85))' }}>
           <BetPanel
             scenario={myScenario}
             toCall={myToCall}

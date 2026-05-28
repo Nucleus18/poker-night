@@ -17,22 +17,22 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
     left: `${position.x}%`,
     top: `${position.y}%`,
     transform: 'translate(-50%, -50%)',
-    width: 96,
+    width: 'var(--seat-width, 96px)',
     zIndex: 4,
   };
 
   if (isEmpty || !player) {
     return (
-      <div style={style}>
+      <div style={style} className="seat-root empty-seat-root">
         <div className="flex flex-col items-center">
           <div
-            className="w-[72px] h-[72px] rounded-full flex items-center justify-center"
+            className="seat-avatar empty-seat-avatar w-[72px] h-[72px] rounded-full flex items-center justify-center"
             style={{ border: '1.5px dashed rgba(255,255,255,0.15)', opacity: 0.4 }}
           >
             <span className="text-xl text-emerald-100/30">+</span>
           </div>
           <div
-            className="-mt-2.5 px-2.5 py-1 text-center min-w-[96px] rounded-md"
+            className="seat-tag -mt-2.5 px-2.5 py-1 text-center min-w-[96px] rounded-md"
             style={{ border: '1px dashed rgba(255,255,255,0.1)' }}
           >
             <div className="text-[11px] text-emerald-100/40">空位</div>
@@ -65,7 +65,7 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
     : 'border-emerald-500 text-emerald-300';
 
   return (
-    <div style={style} className={player.hasFolded ? 'opacity-40 grayscale' : ''}>
+    <div style={style} className={`seat-root ${player.hasFolded ? 'opacity-40 grayscale' : ''}`}>
       <div className="flex flex-col items-center relative">
         {actionLabel && (
           <div
@@ -126,7 +126,7 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
         )}
 
         <div
-          className={`relative w-[72px] h-[72px] rounded-full p-[3px] z-10 ${ringClass}`}
+          className={`seat-avatar relative w-[72px] h-[72px] rounded-full p-[3px] z-10 ${ringClass}`}
           style={{
             background: 'linear-gradient(180deg, #2a2a2a, #0a0a0a)',
             boxShadow: isWinner
@@ -178,7 +178,7 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
             </div>
           )}
         </div>
-        <div className={`-mt-2.5 px-2.5 py-1 text-center min-w-[96px] rounded-md border shadow-[0_4px_10px_rgba(0,0,0,0.5)] relative z-10 ${tagClass}`}>
+        <div className={`seat-tag -mt-2.5 px-2.5 py-1 text-center min-w-[96px] rounded-md border shadow-[0_4px_10px_rgba(0,0,0,0.5)] relative z-10 ${tagClass}`}>
           <div className="text-[11px] font-medium truncate max-w-[92px]">{player.name}</div>
           <div className={`text-[13px] font-semibold leading-none mt-0.5 ${player.stack === 0 ? 'text-gray-500' : 'text-amber-200'}`}>
             ${player.stack.toLocaleString()}
