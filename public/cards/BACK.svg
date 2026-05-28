@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 336">
+  <defs>
+    <linearGradient id="felt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fef2f2"/>
+      <stop offset="0.5" stop-color="#dc2626"/>
+      <stop offset="1" stop-color="#7f1d1d"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.55" stop-color="#fee2e2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#991b1b" stop-opacity="0.9"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="24" height="24" fill="#b91c1c"/>
+      <path d="M0 0H24M0 12H24M0 24H24" stroke="#ffffff" stroke-opacity="0.9" stroke-width="3"/>
+      <path d="M0 6H24M0 18H24" stroke="#fecaca" stroke-opacity="0.75" stroke-width="1.4"/>
+    </pattern>
+    <radialGradient id="shine" cx="32%" cy="18%" r="72%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.36" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#450a0a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <rect x="7" y="7" width="226" height="322" rx="18" fill="url(#edge)"/>
+  <rect x="16" y="16" width="208" height="304" rx="13" fill="url(#grid)"/>
+  <rect x="16" y="16" width="208" height="304" rx="13" fill="url(#shine)"/>
+  <rect x="25" y="25" width="190" height="286" rx="10" fill="none" stroke="#ffffff" stroke-opacity="0.92" stroke-width="5"/>
+  <rect x="36" y="36" width="168" height="264" rx="7" fill="none" stroke="#7f1d1d" stroke-opacity="0.55" stroke-width="2"/>
+
+  <g filter="url(#shadow)">
+    <path d="M120 78L174 168L120 258L66 168Z" fill="#ffffff" fill-opacity="0.92" stroke="#7f1d1d" stroke-width="5"/>
+    <path d="M120 106L154 168L120 230L86 168Z" fill="url(#felt)" stroke="#ffffff" stroke-width="4"/>
+    <path d="M88 168H152M120 108V228" stroke="#ffffff" stroke-opacity="0.72" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -67,7 +67,6 @@ export default function RoomPage() {
   const [muted, setMuted] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [showToast, setShowToast] = useState<string | null>(null);
   const [showStandings, setShowStandings] = useState(false);
   const [showRoomMenu, setShowRoomMenu] = useState(false);
   const [activeRunIndex, setActiveRunIndex] = useState<number | null>(null);
@@ -474,8 +473,6 @@ export default function RoomPage() {
 
   const copyRoomLink = () => {
     navigator.clipboard?.writeText(`${location.origin}/room/${room.id}`);
-    setShowToast('房间链接已复制');
-    setTimeout(() => setShowToast(null), 2000);
   };
 
   const exitRoom = () => {
@@ -577,7 +574,7 @@ export default function RoomPage() {
       <div className="table-wrap flex-1 flex items-center justify-center pt-12">
         <div className="poker-stage relative">
           {/* 桌面分层 */}
-          <div className="absolute" style={{ inset: '6% 4% -2% 4%', borderRadius: 9999, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.7), rgba(0,0,0,0.3) 50%, transparent 75%)', filter: 'blur(20px)' }}></div>
+          <div className="absolute" style={{ inset: '8% 2% -4% 2%', borderRadius: 9999, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.72), rgba(0,0,0,0.34) 50%, transparent 76%)', filter: 'blur(22px)' }}></div>
           <div className="absolute rail-bg" style={{ inset: '6% 5%', borderRadius: 9999 }}></div>
           <div className="absolute rail-highlight-bg pointer-events-none" style={{ inset: 'calc(6% + 2px) calc(5% + 2px)', borderRadius: 9999 }}></div>
           <div className="absolute rail-inner-edge" style={{ inset: 'calc(6% + 22px) calc(5% + 22px)', borderRadius: 9999 }}></div>
@@ -704,13 +701,11 @@ export default function RoomPage() {
                 player={isEmpty ? undefined : p}
                 isEmpty={isEmpty}
                 active={!isStreetSettling && state.toActSeat === p.seatIdx}
-                showCards={!p.isHero && p.holeCards.length > 0 && (
-                  // 还在牌局中（未弃牌）→ 显示牌背；收筹码过渡期间先不翻开
-                  (!p.hasFolded && !showdownReady)
-                  // 摊牌结算正式开始后再 reveal
-                  || (showdownReady && p.revealCards)
+                showCards={p.holeCards.length > 0 && (
+                  // 当前玩家始终显示真手牌；其他玩家未结算时显示牌背，结算 reveal 后翻开
+                  p.isHero || (!p.hasFolded && !showdownReady) || (showdownReady && p.revealCards)
                 )}
-                revealCards={!p.isHero && p.revealCards && showdownReady}
+                revealCards={p.isHero || (!p.isHero && p.revealCards && showdownReady)}
                 isWinner={showdownReady && !!payout}
                 handLabel={showdownReady && !p.hasFolded ? handLabels[p.seatIdx] : undefined}
                 position={pos}
@@ -729,6 +724,8 @@ export default function RoomPage() {
                 reactionTs={seatReactions[p.seatIdx]?.ts}
                 reactionId={seatReactions[p.seatIdx]?.id}
                 tomatoTs={seatTomatoes[p.seatIdx]?.ts}
+                showCardsEnabled={p.isHero ? p.showCardsEnabled : undefined}
+                onToggleShowCards={p.isHero ? () => adapterRef.current?.toggleShowCards() : undefined}
                 tomatoTargetable={tomatoTargetable}
                 onTomatoTarget={tomatoTargetable ? () => sendTomatoTo(p.seatIdx) : undefined}
               />
@@ -750,21 +747,18 @@ export default function RoomPage() {
             return (
               <div
                 key={`bet-${p.seatIdx}-${isCollecting ? p.visualAction?.ts : 'live'}`}
-                className={`bet-chip absolute z-[7] flex items-center gap-1.5 px-2.5 py-1 rounded-full ${isCollecting ? 'bet-chip-collecting' : ''}`}
-                style={{ 
+                className={`bet-chip table-chip-stack absolute z-[7] ${isCollecting ? 'bet-chip-collecting' : ''}`}
+                aria-label={`下注 ${chipAmount.toLocaleString()}`}
+                style={{
                   left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -50%)',
                   ['--collect-tx' as any]: `${50 - pos.x}%`,
                   ['--collect-ty' as any]: `${50 - pos.y}%`,
-                  background: 'rgba(8,18,14,0.92)',
-                  border: '1px solid rgba(212,175,55,0.55)',
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.6)',
+                  ['--chip-color' as any]: ['#8b5cf6', '#3b82f6', '#ef4444', '#f59e0b', '#22c55e'][p.seatIdx % 5],
                 } as React.CSSProperties}
               >
-                <div className="bet-chip-icon w-5 h-5 rounded-full" style={{
-                  background: 'radial-gradient(circle at 35% 30%, #ff7a7a, #c41e1e 60%, #7a0e0e)',
-                  border: '2px dashed #fff',
-                }}></div>
-                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">{chipAmount.toLocaleString()}</div>
+                <span className="table-chip-piece table-chip-piece-1" />
+                <span className="table-chip-piece table-chip-piece-2" />
+                <span className="table-chip-piece table-chip-piece-3" />
               </div>
             );
           })}
@@ -773,114 +767,28 @@ export default function RoomPage() {
             return (
               <div
                 key={`collect-${settleView.token}-${bet.seatIdx}`}
-                className="bet-chip bet-chip-collecting absolute z-[8] flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                className="bet-chip table-chip-stack bet-chip-collecting absolute z-[8]"
+                aria-label={`收筹码 ${bet.amount.toLocaleString()}`}
                 style={{
                   left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -50%)',
                   ['--collect-tx' as any]: `${50 - pos.x}%`,
                   ['--collect-ty' as any]: `${50 - pos.y}%`,
-                  background: 'rgba(8,18,14,0.92)',
-                  border: '1px solid rgba(212,175,55,0.55)',
-                  boxShadow: '0 4px 10px rgba(0,0,0,0.6)',
+                  ['--chip-color' as any]: ['#8b5cf6', '#3b82f6', '#ef4444', '#f59e0b', '#22c55e'][bet.seatIdx % 5],
                 } as React.CSSProperties}
               >
-                <div className="bet-chip-icon w-5 h-5 rounded-full" style={{
-                  background: 'radial-gradient(circle at 35% 30%, #ff7a7a, #c41e1e 60%, #7a0e0e)',
-                  border: '2px dashed #fff',
-                }}></div>
-                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">{bet.amount.toLocaleString()}</div>
+                <span className="table-chip-piece table-chip-piece-1" />
+                <span className="table-chip-piece table-chip-piece-2" />
+                <span className="table-chip-piece table-chip-piece-3" />
               </div>
             );
           })}
-
-          {/* Hero 手牌：fold 后保留显示（灰阶+半透明），到下一手才清除 */}
-          {hero.holeCards.length === 2 && (
-            <div
-              className="hero-hand absolute flex z-[6]"
-              style={{
-                bottom: '14%',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                opacity: hero.hasFolded && !(showdownReady && hero.revealCards) ? 0.35 : 1,
-                filter: hero.hasFolded && !(showdownReady && hero.revealCards) ? 'grayscale(0.9)' : 'none',
-                transition: 'opacity 0.3s, filter 0.3s',
-              }}
-            >
-              <div
-                className="relative flex"
-                style={{
-                  filter: showdownReady && hero.revealCards
-                    ? 'drop-shadow(0 0 14px rgba(212,175,55,0.85)) drop-shadow(0 0 4px rgba(255,215,128,0.6))'
-                    : 'none',
-                  transition: 'filter 0.4s',
-                }}
-              >
-                <PlayingCard key={`hero-${state.handNumber}-0-${hero.holeCards[0].rank}${hero.holeCards[0].suit}`} card={hero.holeCards[0]} rotate={-7} deal dealDelay={80} />
-                <PlayingCard key={`hero-${state.handNumber}-1-${hero.holeCards[1].rank}${hero.holeCards[1].suit}`} card={hero.holeCards[1]} rotate={7} deal dealDelay={240} />
-
-              </div>
-              {hero.hasFolded && !hero.revealCards && (
-                <div
-                  className="absolute left-1/2 -bottom-7 -translate-x-1/2 px-2.5 py-1 rounded text-[11px] font-bold tracking-widest whitespace-nowrap"
-                  style={{
-                    background: 'rgba(0,0,0,0.85)',
-                    color: '#ff8585',
-                    border: '1px solid #d83a3a',
-                    boxShadow: '0 0 8px rgba(216,58,58,0.5)',
-                  }}
-                >
-                  FOLDED
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 秀牌切换按钮（永远显示，方便随时切；位置紧贴手牌右侧） */}
-          {!hero.isSittingOut && (
-            <button
-              onClick={() => {
-                adapterRef.current?.toggleShowCards();
-                const next = !hero.showCardsEnabled;
-                setShowToast(next ? '本手已开启秀牌：结算时会展示你的手牌' : '本手已关闭秀牌：结算时保持隐藏');
-                setTimeout(() => setShowToast(null), 2500);
-              }}
-              className="show-toggle absolute z-[7] flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-all"
-              style={{ 
-                bottom: '16%', right: '24%',
-                background: hero.showCardsEnabled ? 'rgba(16,185,129,0.18)' : 'rgba(20,20,20,0.7)',
-                border: `1.5px solid ${hero.showCardsEnabled ? '#10b981' : 'rgba(255,255,255,0.15)'}`,
-                boxShadow: hero.showCardsEnabled
-                  ? '0 0 16px rgba(16,185,129,0.5), 0 4px 10px rgba(0,0,0,0.5)'
-                  : '0 4px 10px rgba(0,0,0,0.5)',
-                color: hero.showCardsEnabled ? '#10b981' : '#9fdcc2',
-              }}
-              title={hero.showCardsEnabled ? '点击关闭：本手结算时隐藏' : '点击开启：本手结算时展示手牌'}
-            >
-              {hero.showCardsEnabled ? (
-                /* 睁眼图标 */
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              ) : (
-                /* 闭眼图标 */
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-10-7-10-7a18.45 18.45 0 0 1 5.06-5.94"/>
-                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-              )}
-              <span className="text-[9px] font-semibold tracking-widest leading-none">
-                {hero.showCardsEnabled ? '秀牌' : '藏牌'}
-              </span>
-            </button>
-          )}
 
           {/* 摊牌结果提示：不再从桌面中心发光/飞筹码，只保留聚焦赢家头像的收益动画 */}
         </div>
       </div>
 
       {/* 快捷表情 + 番茄 */}
-      <div className="quick-reactions fixed right-5 z-[58] flex gap-2 rounded-2xl border border-white/10 bg-black/45 p-2 shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md">
+      <div className="quick-reactions fixed left-5 z-[58] flex gap-2 rounded-2xl border border-white/10 bg-black/45 p-2 shadow-[0_10px_28px_rgba(0,0,0,0.45)] backdrop-blur-md">
         <button
           type="button"
           onClick={toggleTomatoTargeting}
@@ -1066,9 +974,9 @@ export default function RoomPage() {
         </div>
       )}
 
-      {/* 底部行动区 */}
+      {/* 行动区：左下角紧凑反 L，RAISE/BET 二级菜单展开调注 */}
       {!state.waitingToStart && state.street !== 'runout-voting' && (
-        <div className="action-bar fixed bottom-0 left-0 right-0 z-40 px-6 py-4" style={{ background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.85))' }}>
+        <div className="action-bar fixed bottom-0 left-0 right-0 z-40 pointer-events-none">
           <BetPanel
             scenario={myScenario}
             toCall={myToCall}
@@ -1084,21 +992,6 @@ export default function RoomPage() {
             onBet={(amt) => adapterRef.current?.hero(myScenario === 'check' ? 'bet' : 'raise', amt)}
             onAllIn={() => adapterRef.current?.hero('allin')}
           />
-        </div>
-      )}
-
-      {/* 秀牌开关 toast */}
-      {showToast && (
-        <div
-          className="fixed top-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm z-[60] backdrop-blur-md"
-          style={{
-            background: 'rgba(8,18,14,0.92)',
-            border: '1px solid rgba(16,185,129,0.5)',
-            boxShadow: '0 4px 16px rgba(16,185,129,0.3)',
-            animation: 'winnerBanner 0.3s ease-out',
-          }}
-        >
-          {showToast}
         </div>
       )}
 

@@ -34,7 +34,7 @@ export function toViewIdx(absoluteIdx: number, mySeat: number): number {
  * @param viewIdx 0..8（0 = 我自己，在屏幕底部）
  */
 export function getSeatPositionByView(viewIdx: number): SeatPos {
-  if (viewIdx === 0) return { x: 50, y: 96 };
+  if (viewIdx === 0) return { x: 43, y: 88 };
   const angleDeg = NON_HERO_ANGLES[viewIdx - 1];
   const r = (angleDeg * Math.PI) / 180;
   return {

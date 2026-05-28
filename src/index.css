@@ -102,6 +102,30 @@ body {
   box-shadow: 0 0 12px rgba(16, 185, 129, 0.8);
   cursor: grab;
 }
+.bet-rail-range {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  background: transparent;
+  accent-color: var(--neon);
+}
+.bet-rail-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ecfeff, #8ff8d2 48%, #10b981);
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 0 14px rgba(16,185,129,0.82), 0 3px 8px rgba(0,0,0,0.55);
+}
+.bet-rail-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ecfeff, #10b981);
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 0 14px rgba(16,185,129,0.82);
+}
 
 /* 主操作按钮三槽 */
 .btn-action {
@@ -149,6 +173,27 @@ body {
   pointer-events: none;
   animation: collectBetChip 0.72s cubic-bezier(0.32, 0.0, 0.18, 1.0) forwards;
 }
+.table-chip-stack {
+  width: 34px;
+  height: 28px;
+  filter: drop-shadow(0 5px 7px rgba(0,0,0,0.68));
+}
+.table-chip-piece {
+  position: absolute;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255,255,255,0.9), transparent 16%),
+    radial-gradient(circle at 50% 50%, var(--chip-color, #ef4444) 0 54%, rgba(20,20,20,0.95) 56% 63%, #f8fafc 65% 72%, var(--chip-color, #ef4444) 74% 100%);
+  border: 1.5px dashed rgba(255,255,255,0.86);
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.28), 0 1px 2px rgba(0,0,0,0.48);
+}
+.table-chip-piece-1 { top: 10px; }
+.table-chip-piece-2 { top: 5px; transform: translateX(-50%) translateX(-5px); }
+.table-chip-piece-3 { top: 0; transform: translateX(-50%) translateX(5px); }
 @keyframes collectBetChip {
   0% {
     opacity: 1;
@@ -236,29 +281,17 @@ body {
   -webkit-user-drag: none;
 }
 .playing-card-back {
-  background: linear-gradient(135deg, #17385d, #08192d 58%, #06101f);
-  border: 1px solid rgba(255,255,255,0.12);
+  background: transparent;
+  border: 0;
   transform: rotateY(180deg);
 }
-.card-back-panel {
-  position: absolute;
-  inset: 5px;
-  border-radius: 5px;
-  border: 1px solid rgba(125,194,255,0.45);
-  background:
-    radial-gradient(circle at 50% 50%, rgba(64,180,255,0.25), transparent 34%),
-    repeating-linear-gradient(45deg, rgba(125,194,255,0.22) 0 2px, transparent 2px 6px),
-    repeating-linear-gradient(-45deg, rgba(255,255,255,0.08) 0 2px, transparent 2px 6px);
-}
-.card-back-diamond {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 34%;
-  height: 24%;
-  transform: translate(-50%, -50%) rotate(45deg);
-  border: 1px solid rgba(255,255,255,0.55);
-  background: rgba(255,255,255,0.08);
+.card-back-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 .is-facedown .playing-card-inner {
   transform: rotateY(180deg);
@@ -399,7 +432,15 @@ body {
   100% { transform: scale(1); }
 }
 .quick-reactions {
-  bottom: calc(92px + env(safe-area-inset-bottom));
+  left: 18px;
+  right: auto;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+}
+.seat-hole-cards .playing-card + .playing-card {
+  margin-left: -13px;
+}
+.hero-show-toggle {
+  transform-origin: center;
 }
 .seat-reaction {
   top: -8px;
@@ -527,22 +568,9 @@ body {
   .seat-tag div:first-child { font-size: 10px !important; max-width: 78px !important; }
   .seat-tag div:nth-child(2) { font-size: 11px !important; }
   .community-cards { gap: 6px !important; transform: translate(-50%, -50%) scale(0.72) !important; }
-  .hero-hand { bottom: 9% !important; transform: translateX(-50%) scale(0.72) !important; }
-  .show-toggle { bottom: 10% !important; right: 18% !important; transform: scale(0.78); transform-origin: center; }
-  .action-bar { padding: 6px 8px 8px !important; }
-  .bet-panel { gap: 6px !important; }
-  .bet-amount-panel {
-    width: min(96vw, 720px);
-    padding: 6px 8px !important;
-    gap: 8px !important;
-  }
-  .bet-stepper input { width: 76px !important; font-size: 13px !important; }
-  .bet-stepper button { width: 24px !important; height: 32px !important; }
-  .bet-slider { min-width: 180px !important; max-width: 260px !important; }
-  .quick-bets button { min-width: 48px !important; padding: 4px 6px !important; font-size: 10px !important; }
-  .quick-bets button div { display: none; }
   .action-buttons { gap: 8px !important; }
   .btn-action { min-width: 98px !important; height: 44px !important; padding: 0 10px !important; }
+  .raise-popover { width: 98px !important; }
   .btn-action span:first-child { font-size: 11px !important; }
   .btn-action span:nth-child(2) { font-size: 13px !important; }
   .waiting-overlay { bottom: 88px !important; transform: translateX(-50%) scale(0.86); transform-origin: bottom center; }
@@ -596,31 +624,8 @@ body {
   .seat-tag div:first-child { font-size: 10px !important; max-width: 74px !important; }
   .seat-tag div:nth-child(2) { font-size: 11px !important; }
   .community-cards { gap: 5px !important; transform: translate(-50%, -50%) scale(0.62) !important; }
-  .hero-hand { bottom: 6% !important; transform: translateX(-50%) scale(0.68) !important; }
-  .show-toggle { bottom: 8% !important; right: 12% !important; transform: scale(0.7); transform-origin: center; }
-  .action-bar { padding: 8px 8px calc(8px + env(safe-area-inset-bottom)) !important; }
-  .bet-panel { gap: 7px !important; }
-  .bet-amount-panel {
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: center;
-    padding: 8px !important;
-    gap: 8px !important;
-    border-radius: 14px !important;
-  }
-  .bet-stepper { order: 1; }
-  .bet-stepper input { width: 82px !important; font-size: 13px !important; }
-  .bet-slider { order: 2; min-width: 52vw !important; max-width: 52vw !important; }
-  .quick-bets {
-    order: 3;
-    width: 100%;
-    justify-content: center;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-  .quick-bets button { min-width: 54px !important; padding: 4px 6px !important; font-size: 10px !important; }
-  .quick-bets button div { display: none; }
-  .action-buttons { width: 100%; gap: 7px !important; justify-content: center; }
+  .bet-panel { right: 8px !important; left: auto !important; bottom: calc(8px + env(safe-area-inset-bottom)) !important; }
+  .action-buttons { gap: 7px !important; justify-content: flex-end; }
   .btn-action {
     min-width: 31vw !important;
     height: 48px !important;
@@ -674,20 +679,13 @@ body {
   .best-hand-detail { display: none; }
   .best-hand-card.is-expanded .best-hand-detail { display: block; }
 
-  /* 移动端下注胶囊：明显缩小，减少遮挡 */
+  /* 移动端桌面筹码缩小，避免遮挡 */
   .bet-chip {
-    gap: 4px !important;
-    padding: 2px 6px !important;
     transform: translate(-50%, -50%) scale(0.78) !important;
     transform-origin: center center;
   }
-  .bet-chip-icon {
-    width: 14px !important;
-    height: 14px !important;
-    border-width: 1.5px !important;
-  }
-  .bet-chip-amount { font-size: 9px !important; }
 }
+
 
 @media (max-width: 640px) and (orientation: portrait) {
   /* 覆盖上一段竖屏旧顶栏布局：只保留状态 + 菜单，低频操作进二级菜单 */
@@ -749,28 +747,10 @@ body {
     bottom: calc(132px + env(safe-area-inset-bottom)) !important;
   }
 
-  /* 竖屏默认收起高级下注，只留金额 + 调整按钮 + 三大操作 */
-  .mobile-advanced-toggle { display: inline-flex !important; }
-  .bet-amount-panel:not(.is-expanded) .advanced-bet-control {
-    display: none !important;
-  }
-  .bet-amount-panel:not(.is-expanded) {
-    flex-wrap: nowrap !important;
-    width: auto !important;
-    max-width: 96vw;
-  }
-  .bet-amount-panel:not(.is-expanded) .bet-stepper input {
-    width: 96px !important;
-  }
-  .bet-amount-panel.is-expanded .advanced-bet-control {
-    display: flex !important;
-  }
 }
 
+
 @media (max-height: 520px) and (orientation: landscape) {
-  .mobile-advanced-toggle { display: inline-flex !important; }
-  .bet-amount-panel:not(.is-expanded) .advanced-bet-control { display: none !important; }
-  .bet-amount-panel:not(.is-expanded) { width: auto !important; }
   .best-hand-card {
     bottom: calc(88px + env(safe-area-inset-bottom)) !important;
   }

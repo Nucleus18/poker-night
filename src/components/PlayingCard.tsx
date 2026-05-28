@@ -31,7 +31,7 @@ interface PlayingCardProps {
   card?: Card;
   faceDown?: boolean;
   glow?: boolean;
-  size?: 'sm' | 'table' | 'md' | 'lg';
+  size?: 'sm' | 'seat' | 'table' | 'md' | 'lg' | 'hero';
   rotate?: number;
   /** 发牌动画：先飞入，再由牌背翻成牌面 */
   deal?: boolean;
@@ -40,10 +40,14 @@ interface PlayingCardProps {
 }
 
 export default function PlayingCard({ card, faceDown, glow, size = 'md', rotate = 0, deal, dealDelay = 0 }: PlayingCardProps) {
-  const dim = size === 'lg'
+  const dim = size === 'hero'
+    ? { w: 78, h: 112 }
+    : size === 'lg'
     ? { w: 64, h: 92 }
     : size === 'table'
     ? { w: 46, h: 66 }
+    : size === 'seat'
+    ? { w: 34, h: 48 }
     : size === 'sm'
     ? { w: 24, h: 36 }
     : { w: 60, h: 86 };
@@ -70,8 +74,7 @@ export default function PlayingCard({ card, faceDown, glow, size = 'md', rotate 
     >
       <div className={`playing-card-inner ${deal && !isFaceDown ? 'playing-card-flip' : ''}`}>
         <div className="playing-card-face playing-card-back" style={{ boxShadow: outerShadow }}>
-          <div className="card-back-panel" />
-          <div className="card-back-diamond" />
+          <img className="card-back-img" src="/cards/BACK.svg?v=red-white-grid" alt="牌背" draggable={false} />
         </div>
 
         <div className="playing-card-face playing-card-front playing-card-front-asset" style={{ boxShadow: outerShadow }}>
