@@ -323,8 +323,149 @@ body {
   .waiting-overlay { bottom: 170px !important; transform: translateX(-50%) scale(0.86); transform-origin: bottom center; }
 }
 
+/* 菜单按钮默认桌面隐藏，移动端展示 */
+.mobile-menu-trigger { display: none; }
+
 /* 小屏通用：避免一些浮层太宽 */
 @media (max-width: 640px) {
   .fixed.left-4 { left: 8px !important; }
+}
+
+/* ========== 移动端二级菜单 + 折叠信息层 ========== */
+@media (max-width: 820px), (max-height: 520px) {
+  .desktop-actions,
+  .room-code-pill,
+  .mute-btn {
+    display: none !important;
+  }
+  .mobile-menu-trigger {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    height: 30px;
+    font-size: 16px !important;
+  }
+  .room-menu-popover {
+    display: block !important;
+  }
+
+  /* 当前牌型：默认小浮条，展开后再显示详情 */
+  .best-hand-card {
+    left: 8px !important;
+    bottom: calc(118px + env(safe-area-inset-bottom)) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 16px);
+    overflow: hidden;
+  }
+  .best-hand-compact { display: flex !important; }
+  .best-hand-detail { display: none; }
+  .best-hand-card.is-expanded .best-hand-detail { display: block; }
+
+  /* 移动端下注胶囊：明显缩小，减少遮挡 */
+  .bet-chip {
+    gap: 4px !important;
+    padding: 2px 6px !important;
+    transform: translate(-50%, -50%) scale(0.78) !important;
+    transform-origin: center center;
+  }
+  .bet-chip-icon {
+    width: 14px !important;
+    height: 14px !important;
+    border-width: 1.5px !important;
+  }
+  .bet-chip-amount { font-size: 9px !important; }
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+  /* 覆盖上一段竖屏旧顶栏布局：只保留状态 + 菜单，低频操作进二级菜单 */
+  .room-header {
+    height: 72px !important;
+    padding: 7px 8px !important;
+    display: grid !important;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    align-items: center !important;
+    gap: 3px 6px !important;
+  }
+  .header-left {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+    min-width: 0;
+  }
+  .header-left .font-cinzel { display: none !important; }
+  .room-header > div:nth-child(2) {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+    position: static !important;
+    transform: none !important;
+    align-items: flex-start;
+    pointer-events: auto;
+    min-width: 0;
+  }
+  .room-header > div:nth-child(2) > div:first-child {
+    font-size: 12px !important;
+    max-width: 58vw;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .header-right {
+    grid-column: 1 / 3;
+    grid-row: 2 / 3;
+    justify-content: center !important;
+  }
+  .mobile-menu-trigger {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+  }
+  .stack-pill,
+  .timer-pill {
+    padding: 4px 9px !important;
+    font-size: 12px !important;
+  }
+  .room-menu-popover {
+    position: fixed !important;
+    top: 44px !important;
+    right: 8px !important;
+    width: min(240px, calc(100vw - 16px)) !important;
+  }
+
+  /* 牌型浮条进一步上提，不压下注区 */
+  .best-hand-card {
+    bottom: calc(132px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* 竖屏默认收起高级下注，只留金额 + 调整按钮 + 三大操作 */
+  .mobile-advanced-toggle { display: inline-flex !important; }
+  .bet-amount-panel:not(.is-expanded) .advanced-bet-control {
+    display: none !important;
+  }
+  .bet-amount-panel:not(.is-expanded) {
+    flex-wrap: nowrap !important;
+    width: auto !important;
+    max-width: 96vw;
+  }
+  .bet-amount-panel:not(.is-expanded) .bet-stepper input {
+    width: 96px !important;
+  }
+  .bet-amount-panel.is-expanded .advanced-bet-control {
+    display: flex !important;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .mobile-advanced-toggle { display: inline-flex !important; }
+  .bet-amount-panel:not(.is-expanded) .advanced-bet-control { display: none !important; }
+  .bet-amount-panel:not(.is-expanded) { width: auto !important; }
+  .best-hand-card {
+    bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+  }
+  .room-menu-popover {
+    position: fixed !important;
+    top: 40px !important;
+    right: 8px !important;
+  }
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Hand } from 'pokersolver';
 import { useAuthStore } from '@/auth/store';
@@ -17,6 +17,17 @@ import { getSeatPosition, getBetChipPosition, getDealerPosition } from '@/compon
 import Leaderboard from '@/components/Leaderboard';
 import Standings from '@/components/Standings';
 
+function MenuItem({ children, onClick, danger }: { children: ReactNode; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${danger ? 'text-red-300 hover:bg-red-500/10' : 'text-emerald-100/80 hover:bg-emerald-500/10'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function RoomPage() {
   const { id } = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user)!;
@@ -33,6 +44,7 @@ export default function RoomPage() {
   const [rebuyOffered, setRebuyOffered] = useState(false);
   const [showToast, setShowToast] = useState<string | null>(null);
   const [showStandings, setShowStandings] = useState(false);
+  const [showRoomMenu, setShowRoomMenu] = useState(false);
   const [connStatus, setConnStatus] = useState<ConnectionStatus>('open');
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
@@ -217,65 +229,78 @@ export default function RoomPage() {
 
   const minRaiseTo = getMinRaiseTo(state, mySeatIdx);
 
+  const copyRoomLink = () => {
+    navigator.clipboard?.writeText(`${location.origin}/room/${room.id}`);
+    setShowToast('房间链接已复制');
+    setTimeout(() => setShowToast(null), 2000);
+  };
+
+  const exitRoom = () => {
+    const tip = room.mode === 'online'
+      ? '确定退出房间？\n联机模式下退出后筹码会丢失（保留到本手结算后再清算积分）。'
+      : '确定退出房间？';
+    if (!confirm(tip)) return;
+    try { adapterRef.current?.leave?.(); } catch { /* ignore */ }
+    useRoomStore.getState().leaveActiveRoom();
+    navigate('/');
+  };
+
   return (
     <div className="room-root h-full w-full flex flex-col">
       {/* 顶栏 */}
       <header className="room-header fixed top-0 left-0 right-0 h-14 px-6 flex items-center justify-between z-50" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0))' }}>
-        <div className="flex gap-3 items-center">
+        <div className="header-left flex gap-3 items-center">
           <div className="font-cinzel tracking-[4px] text-emerald-100/90 text-base">POKER NIGHT</div>
-          <button
-            onClick={() => {
-              const tip = room.mode === 'online'
-                ? '确定退出房间？\n联机模式下退出后筹码会丢失（保留到本手结算后再清算积分）。'
-                : '确定退出房间？';
-              if (!confirm(tip)) return;
-              try { adapterRef.current?.leave?.(); } catch { /* ignore */ }
-              useRoomStore.getState().leaveActiveRoom();
-              navigate('/');
-            }}
-            className="pill"
-            title="退出房间"
-          >
-            退出房间
-          </button>
-          <button
-            onClick={() => setShowStandings(true)}
-            className="pill"
-            title="查看本房间积分排行"
-          >
-            战绩
-          </button>
+          <div className="desktop-actions flex gap-3 items-center">
+            <button onClick={exitRoom} className="pill" title="退出房间">退出房间</button>
+            <button onClick={() => setShowStandings(true)} className="pill" title="查看本房间积分排行">战绩</button>
+          </div>
         </div>
         <div className="flex flex-col items-center gap-0.5">
           <div className="text-sm">{(state.config?.name || room.config?.name || '房间')} · 第 {state.handNumber} 手</div>
           <div className="w-7 h-0.5 bg-emerald-500 rounded"></div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className={`pill ${secondsLeft < 60 ? 'text-red-300 border-red-500/50' : ''}`}>
+        <div className="header-right flex items-center gap-2 relative">
+          <div className={`timer-pill pill ${secondsLeft < 60 ? 'text-red-300 border-red-500/50' : ''}`}>
             ⏱ {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}
           </div>
           {room.mode === 'online' && (
             <div
-              className="pill flex items-center gap-1.5"
+              className="room-code-pill pill flex items-center gap-1.5"
               style={{
                 color: connStatus === 'open' ? '#10b981' : connStatus === 'reconnecting' ? '#f4d97a' : '#ff8585',
                 borderColor: connStatus === 'open' ? 'rgba(16,185,129,0.4)' : connStatus === 'reconnecting' ? 'rgba(244,217,122,0.4)' : 'rgba(255,133,133,0.4)',
               }}
               title={`房间码 ${room.id}（点击复制）`}
-              onClick={() => {
-                navigator.clipboard?.writeText(`${location.origin}/room/${room.id}`);
-                setShowToast('房间链接已复制');
-                setTimeout(() => setShowToast(null), 2000);
-              }}
+              onClick={copyRoomLink}
             >
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: connStatus === 'open' ? '#10b981' : connStatus === 'reconnecting' ? '#f4d97a' : '#ff8585' }} />
               {connStatus === 'open' ? room.id : connStatus === 'reconnecting' ? '重连中' : '未连接'}
             </div>
           )}
-          <div className="bg-white/[0.06] border border-white/10 rounded-full px-3.5 py-1.5 text-[13px]">
+          <div className="stack-pill bg-white/[0.06] border border-white/10 rounded-full px-3.5 py-1.5 text-[13px]">
             ${hero.stack.toLocaleString()}
           </div>
-          <button onClick={() => setMuted((m) => !m)} className="pill">{muted ? '🔇' : '🔊'}</button>
+          <button onClick={() => setMuted((m) => !m)} className="mute-btn pill">{muted ? '🔇' : '🔊'}</button>
+          <button
+            onClick={() => setShowRoomMenu((v) => !v)}
+            className="mobile-menu-trigger pill"
+            aria-label="房间菜单"
+          >
+            ☰
+          </button>
+          {showRoomMenu && (
+            <div className="room-menu-popover absolute right-0 top-[calc(100%+8px)] w-[220px] rounded-xl border border-emerald-500/30 bg-[rgba(8,18,14,0.96)] shadow-[0_12px_30px_rgba(0,0,0,0.65)] backdrop-blur-md p-2 z-[80]">
+              <div className="px-3 py-2 border-b border-white/5 mb-1">
+                <div className="text-[10px] tracking-[2px] text-emerald-300/70">房间菜单</div>
+                <div className="text-xs text-emerald-100/60 mt-1">{room.mode === 'online' ? `房间码 ${room.id}` : '本地房间'}</div>
+              </div>
+              {room.mode === 'online' && <MenuItem onClick={() => { copyRoomLink(); setShowRoomMenu(false); }}>复制房间链接</MenuItem>}
+              <MenuItem onClick={() => { setShowStandings(true); setShowRoomMenu(false); }}>战绩排行</MenuItem>
+              <MenuItem onClick={() => { setMuted((m) => !m); setShowRoomMenu(false); }}>声音：{muted ? '关' : '开'}</MenuItem>
+              <MenuItem danger onClick={() => { setShowRoomMenu(false); exitRoom(); }}>退出房间</MenuItem>
+            </div>
+          )}
         </div>
       </header>
 
@@ -352,19 +377,19 @@ export default function RoomPage() {
             return (
               <div
                 key={`bet-${p.seatIdx}`}
-                className="absolute z-[7] flex items-center gap-1.5 px-2.5 py-1 rounded-full"
-                style={{
+                className="bet-chip absolute z-[7] flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                style={{ 
                   left: `${pos.x}%`, top: `${pos.y}%`, transform: 'translate(-50%, -50%)',
                   background: 'rgba(8,18,14,0.92)',
                   border: '1px solid rgba(212,175,55,0.55)',
                   boxShadow: '0 4px 10px rgba(0,0,0,0.6)',
                 }}
               >
-                <div className="w-5 h-5 rounded-full" style={{
+                <div className="bet-chip-icon w-5 h-5 rounded-full" style={{
                   background: 'radial-gradient(circle at 35% 30%, #ff7a7a, #c41e1e 60%, #7a0e0e)',
                   border: '2px dashed #fff',
                 }}></div>
-                <div className="text-[11px] font-bold text-amber-200">${p.betThisRound.toLocaleString()}</div>
+                <div className="bet-chip-amount text-[11px] font-bold text-amber-200">${p.betThisRound.toLocaleString()}</div>
               </div>
             );
           })}

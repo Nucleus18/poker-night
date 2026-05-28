@@ -21,6 +21,7 @@ interface BetPanelProps {
 export default function BetPanel(props: BetPanelProps) {
   const { scenario, toCall, myStack, pot, minBet, maxBet, step, onFold, onCheck, onCall, onBet, onAllIn } = props;
   const [value, setValue] = useState(minBet);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     setValue(Math.max(minBet, Math.min(maxBet, value)));
@@ -100,7 +101,7 @@ export default function BetPanel(props: BetPanelProps) {
   return (
     <div className="bet-panel flex flex-col items-center gap-3 w-full">
       <div
-        className={`bet-amount-panel flex items-center gap-3.5 bg-[rgba(8,18,14,0.85)] border border-emerald-500/25 rounded-2xl px-4 py-2.5 backdrop-blur-md transition-opacity ${panelDisabled ? 'opacity-40 pointer-events-none' : ''}`}
+        className={`bet-amount-panel ${advancedOpen ? 'is-expanded' : ''} flex items-center gap-3.5 bg-[rgba(8,18,14,0.85)] border border-emerald-500/25 rounded-2xl px-4 py-2.5 backdrop-blur-md transition-opacity ${panelDisabled ? 'opacity-40 pointer-events-none' : ''}`}
       >
         {/* Stepper */}
         <div className="bet-stepper flex items-center bg-black/50 border border-white/10 rounded-lg overflow-hidden">
@@ -118,8 +119,16 @@ export default function BetPanel(props: BetPanelProps) {
           <button onClick={() => setVal(value + step)} className="w-7 h-9 text-emerald-100/80 hover:bg-emerald-500/15 hover:text-emerald-400 text-base font-semibold">+</button>
         </div>
 
+        <button
+          type="button"
+          className="mobile-advanced-toggle hidden px-2.5 py-1.5 rounded-lg border border-emerald-500/30 text-[11px] text-emerald-200/90 bg-emerald-500/10"
+          onClick={() => setAdvancedOpen((v) => !v)}
+        >
+          {advancedOpen ? '收起' : '调整'}
+        </button>
+
         {/* Slider */}
-        <div className="bet-slider relative flex-1 min-w-[280px] max-w-[420px] h-9 flex items-center">
+        <div className="advanced-bet-control bet-slider relative flex-1 min-w-[280px] max-w-[420px] h-9 flex items-center">
           <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 bg-white/10 rounded"></div>
           <div
             className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded shadow-[0_0_8px_rgba(16,185,129,0.5)]"
@@ -147,7 +156,7 @@ export default function BetPanel(props: BetPanelProps) {
         </div>
 
         {/* Quick bets */}
-        <div className="quick-bets flex gap-1.5">
+        <div className="advanced-bet-control quick-bets flex gap-1.5">
           {quickOpts.map((q) => (
             <button
               key={q.key}
