@@ -692,6 +692,7 @@ export default function RoomPage() {
           {/* 玩家位 */}
           {state.players.map((p) => {
             const pos = getSeatPosition(p.seatIdx, mySeatIdx);
+            const isCurrentPlayer = p.seatIdx === mySeatIdx;
             const isEmpty = !p.accountId || p.isSittingOut;
             const tomatoTargetable = tomatoTargeting && !isEmpty && p.seatIdx !== mySeatIdx && !p.hasLeft;
             const payout = activePayouts.find((w) => w.seatIdx === p.seatIdx);
@@ -701,11 +702,12 @@ export default function RoomPage() {
                 player={isEmpty ? undefined : p}
                 isEmpty={isEmpty}
                 active={!isStreetSettling && state.toActSeat === p.seatIdx}
+                isCurrentPlayer={isCurrentPlayer}
                 showCards={p.holeCards.length > 0 && (
                   // 当前玩家始终显示真手牌；其他玩家未结算时显示牌背，结算 reveal 后翻开
-                  p.isHero || (!p.hasFolded && !showdownReady) || (showdownReady && p.revealCards)
+                  isCurrentPlayer || (!p.hasFolded && !showdownReady) || (showdownReady && p.revealCards)
                 )}
-                revealCards={p.isHero || (!p.isHero && p.revealCards && showdownReady)}
+                revealCards={isCurrentPlayer || (!isCurrentPlayer && p.revealCards && showdownReady)}
                 isWinner={showdownReady && !!payout}
                 handLabel={showdownReady && !p.hasFolded ? handLabels[p.seatIdx] : undefined}
                 position={pos}
@@ -724,8 +726,8 @@ export default function RoomPage() {
                 reactionTs={seatReactions[p.seatIdx]?.ts}
                 reactionId={seatReactions[p.seatIdx]?.id}
                 tomatoTs={seatTomatoes[p.seatIdx]?.ts}
-                showCardsEnabled={p.isHero ? p.showCardsEnabled : undefined}
-                onToggleShowCards={p.isHero ? () => adapterRef.current?.toggleShowCards() : undefined}
+                showCardsEnabled={isCurrentPlayer ? p.showCardsEnabled : undefined}
+                onToggleShowCards={isCurrentPlayer ? () => adapterRef.current?.toggleShowCards() : undefined}
                 tomatoTargetable={tomatoTargetable}
                 onTomatoTarget={tomatoTargetable ? () => sendTomatoTo(p.seatIdx) : undefined}
               />

@@ -15,6 +15,7 @@ interface SeatProps {
   player?: Player;
   isEmpty?: boolean;
   active?: boolean;
+  isCurrentPlayer?: boolean;
   showCards?: boolean;          // 显示牌背（对手 alive 状态）
   revealCards?: boolean;        // 翻开真牌（showdown / 主动秀）
   isWinner?: boolean;           // 是否是当前结算聚焦赢家（贴 WINNER 徽章）
@@ -40,7 +41,7 @@ interface SeatProps {
   onTomatoTarget?: () => void;
 }
 
-export default function Seat({ player, isEmpty, active, showCards, revealCards, isWinner, handLabel, position, rebuyAmount, rebuysLeft, onRebuy, payoutAmount, payoutActive, reactionTs, reactionId, tomatoTs, showCardsEnabled, onToggleShowCards, tomatoTargetable, onTomatoTarget }: SeatProps) {
+export default function Seat({ player, isEmpty, active, isCurrentPlayer, showCards, revealCards, isWinner, handLabel, position, rebuyAmount, rebuysLeft, onRebuy, payoutAmount, payoutActive, reactionTs, reactionId, tomatoTs, showCardsEnabled, onToggleShowCards, tomatoTargetable, onTomatoTarget }: SeatProps) {
   const reaction = REACTIONS[reactionId || 'wink'] || REACTIONS.wink;
   const seatScale = player
     ? position.y > 78 ? 1.06
@@ -109,8 +110,8 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
     : displayAction?.kind === 'raise' || displayAction?.kind === 'allin'
     ? 'border-amber-300/80 text-amber-100 bg-amber-950/75'
     : 'border-cyan-300/70 text-cyan-100 bg-slate-950/78';
-  const cardsOnRight = player.isHero || position.x <= 50;
-  const cardSideGap = player.isHero ? 12 : 9;
+  const cardsOnRight = isCurrentPlayer || position.x <= 50;
+  const cardSideGap = isCurrentPlayer ? 12 : 9;
   const holeCardsStyle = (cardsOnRight
     ? { left: `calc(100% + ${cardSideGap}px)` }
     : { right: `calc(100% + ${cardSideGap}px)` }
@@ -186,7 +187,7 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
             >
               {[0, 1].map((i) => {
                 const card = player.holeCards[i];
-                const faceUp = player.isHero || !!revealCards;
+                const faceUp = !!isCurrentPlayer || !!revealCards;
                 const rot = i === 0 ? -6 : 6;
 
                 return (
@@ -199,12 +200,12 @@ export default function Seat({ player, isEmpty, active, showCards, revealCards, 
                     }}
                     className={faceUp ? 'opponent-card-reveal relative' : 'opponent-card-back relative'}
                   >
-                    <PlayingCard card={faceUp ? card : undefined} faceDown={!faceUp} size={player.isHero ? 'hero' : 'seat'} />
+                    <PlayingCard card={faceUp ? card : undefined} faceDown={!faceUp} size={isCurrentPlayer ? 'hero' : 'seat'} />
                   </div>
                 );
               })}
 
-              {player.isHero && onToggleShowCards && (
+              {isCurrentPlayer && onToggleShowCards && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onToggleShowCards(); }}
                   className={`hero-show-toggle absolute left-1/2 top-full mt-[-4px] flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border shadow-[0_8px_18px_rgba(0,0,0,0.58)] backdrop-blur-md transition-all hover:-translate-y-0.5 active:scale-95 ${showCardsEnabled ? 'border-sky-200/75 bg-sky-400/24 text-sky-50' : 'border-white/15 bg-black/62 text-slate-200/90'}`}

@@ -8,9 +8,14 @@
  * - 房主创建房间时携带 RoomConfig；后续加入者复用同一份配置
  */
 import type * as Party from 'partykit/server';
-import type { GameState, Player, RoomConfig, ActionKind, RunItCount } from '../src/engine/types';
+import type { GameState, Player, RoomConfig, ActionKind, RunItCount, Card } from '../src/engine/types';
 import { applyAction, startNewHand, createInitialState, rebuyPlayer, voteRunIt } from '../src/engine/engine';
 import { AI_PERSONALITIES, decideAI } from '../src/ai/decide';
+
+const HIDDEN_HOLE_CARDS: Card[] = [
+  { rank: 'A', suit: 's' },
+  { rank: 'A', suit: 's' },
+];
 
 interface JoinPayload {
   type: 'join';
@@ -540,7 +545,10 @@ export default class PokerRoom implements Party.Server {
       const canSeeCards = p.seatIdx === seatIdx
         || (isShowdown && (!p.hasFolded || p.revealCards))
         || p.revealCards;
-      return canSeeCards ? p : { ...p, holeCards: [] as any };
+      if (canSeeCards) return p;
+      return p.holeCards.length === 2
+        ? { ...p, holeCards: HIDDEN_HOLE_CARDS.map((card) => ({ ...card })) }
+        : { ...p, holeCards: [] as any };
     });
     return { ...this.state, players };
   }
