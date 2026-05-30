@@ -395,15 +395,24 @@ export default function RoomPage() {
     };
   }, [showRoomMenu]);
 
-  // showdown 时计算每个未弃牌玩家的牌型描述（用于头像下方大字）
+  const mySeatIdx = adapterRef.current?.mySeatIdx ?? 0;
+
+  // showdown 时计算每个已亮牌玩家的牌型描述（用于头像下方大字）
   // 必须在任何早期 return 之前，遵守 React Hooks 规则
   const handLabels = useMemo(() => {
     if (!state || state.street !== 'showdown' || isStreetSettling) return {} as Record<number, string>;
+    const isMultiRun = state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1;
+    const activeRun = isMultiRun && activeRunIndex && activeRunPayoutReady
+      ? state.runIt?.runs.find((run) => run.index === activeRunIndex)
+      : null;
+    if (isMultiRun && !activeRun) return {} as Record<number, string>;
+    const community = activeRun?.community || state.community;
     const labels: Record<number, string> = {};
     for (const p of state.players) {
-      if (p.hasFolded || p.holeCards.length < 2) continue;
+      const canSeeHand = p.seatIdx === mySeatIdx || p.revealCards;
+      if (p.hasFolded || !canSeeHand || p.holeCards.length < 2) continue;
       try {
-        const all = [...p.holeCards, ...state.community].map((c) => `${c.rank}${c.suit}`);
+        const all = [...p.holeCards, ...community].map((c) => `${c.rank}${c.suit}`);
         if (all.length < 5) continue;
         const hand = (Hand as any).solve(all);
         const name: string = hand.name || '';
@@ -411,7 +420,7 @@ export default function RoomPage() {
       } catch { /* ignore */ }
     }
     return labels;
-  }, [state, isStreetSettling]);
+  }, [state, isStreetSettling, mySeatIdx, activeRunIndex, activeRunPayoutReady]);
 
   if (!room) return <div className="h-full w-full flex items-center justify-center text-emerald-100/50">加载中...</div>;
   if (!state) {
@@ -445,7 +454,6 @@ export default function RoomPage() {
     );
   }
 
-  const mySeatIdx = adapterRef.current?.mySeatIdx ?? 0;
   const hero = state.players[mySeatIdx];
   const pot = state.pots.reduce((a, p) => a + p.amount, 0)
     + state.players.reduce((a, p) => a + p.betThisRound, 0);
@@ -464,11 +472,19 @@ export default function RoomPage() {
   const minRaiseTo = getMinRaiseTo(state, mySeatIdx);
   const activePayouts = (() => {
     if (!showdownReady) return [] as { seatIdx: number; amount: number }[];
+    const toNetPayout = (w: { seatIdx: number; amount: number }, runIndex?: number) => {
+      const player = state.players[w.seatIdx];
+      const runCount = state.runIt?.status === 'complete' ? (state.runIt.runCount || 1) : 1;
+      const contribution = runIndex && runCount > 1
+        ? Math.floor((player?.totalBetThisHand || 0) / runCount) + (runIndex === 1 ? (player?.totalBetThisHand || 0) % runCount : 0)
+        : (player?.totalBetThisHand || 0);
+      return { ...w, amount: Math.max(0, w.amount - contribution) };
+    };
     if (state.runIt?.status === 'complete' && (state.runIt.runCount || 1) > 1) {
       const activeRun = activeRunIndex && activeRunPayoutReady ? state.runIt.runs.find((run) => run.index === activeRunIndex) : null;
-      return activeRun?.winners || [];
+      return activeRun?.winners.map((w) => toNetPayout(w, activeRun.index)) || [];
     }
-    return state.winners || [];
+    return (state.winners || []).map((w) => toNetPayout(w));
   })();
 
   const copyRoomLink = () => {

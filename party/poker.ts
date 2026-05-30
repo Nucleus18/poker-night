@@ -539,12 +539,10 @@ export default class PokerRoom implements Party.Server {
   /** 给指定座位生成 per-player view（隐藏其他人手牌） */
   private viewFor(seatIdx: number): GameState {
     if (!this.state) return null as any;
-    const isShowdown = this.state.street === 'showdown';
     const players = this.state.players.map((p) => {
-      // 自己 / showdown reveal / 已主动 reveal 的玩家：发完整手牌
-      const canSeeCards = p.seatIdx === seatIdx
-        || (isShowdown && (!p.hasFolded || p.revealCards))
-        || p.revealCards;
+      // 自己始终可见；其他玩家只有引擎明确 revealCards 时才发送真牌。
+      // 多人摊牌会在 revealShowdownCards 中把未弃牌玩家置为 reveal；一人收池则尊重秀牌开关。
+      const canSeeCards = p.seatIdx === seatIdx || p.revealCards;
       if (canSeeCards) return p;
       return p.holeCards.length === 2
         ? { ...p, holeCards: HIDDEN_HOLE_CARDS.map((card) => ({ ...card })) }
